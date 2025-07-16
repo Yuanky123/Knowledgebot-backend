@@ -44,7 +44,11 @@ Current_context = { 'post': '',
                     'style': arg.CURRENT_STYLE,
                     'topic': arg.CURRENT_TOPIC,
                     'token': '',
-                    'discussion_database_path': arg.DATABASE_PATH + arg.CURRENT_STYLE + '/' + arg.CURRENT_TOPIC + '.json'
+                    'discussion_database_path': arg.DATABASE_PATH + str(arg.CURRENT_STYLE) + '/' + str(arg.CURRENT_TOPIC) + '.json',
+                    'graph':{
+                        'nodes':[],
+                        'edges':[]
+                    }
                     }  # 当前上下文
 
 # 策略数据库
@@ -97,9 +101,10 @@ def on_timeout_callback():
     else:
         new_added_comments = new_comments[len(Current_context['comments']):]
         # 步骤1：分析最新评论阶段
-        new_added_comments_phase = analyzer.analyze_phase(Current_context, new_added_comments)
+        [new_added_comments_phase, graph] = analyzer.analyze_phase(Current_context, new_added_comments)
         for i in range(len(new_added_comments)):
             new_added_comments[i]['message_phase'] = new_added_comments_phase[i]
+        Current_context['graph'] = graph
         
         # 步骤2：检查当前应该协助的阶段
         analysis_result = analyzer.check_discussion_sufficiency(Current_context, new_added_comments)

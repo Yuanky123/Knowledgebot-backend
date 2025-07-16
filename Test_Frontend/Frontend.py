@@ -1,0 +1,151 @@
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+# Frontend API endpoints 
+# Start frontend and backend, go to the webpage to log in with username “admin” and password “admin”.  
+# Register a new account for the bot. Select the “Bot User” checkbox. Do not select the “Admin User” checkbox. Select the subreddit that the bot should access 
+# Use the following endpoints in sequence to get and post comments. 
+
+# POST /users/login 
+# Log in to account 
+# Payload:  
+# { 
+#     "username": "bot1", 
+#     "password": "bot1" 
+# } 
+# Returns: 
+# { 
+#     "user": { 
+#         "id": 27, 
+#         "username": "bot1", 
+#         "created_at": "2025-07-13T02:21:40.470Z", 
+#         "updated_at": "2025-07-14T10:47:43.689Z", 
+#         "isadmin": "false", 
+#         "isbot": "true", 
+#         "selectedsubreddit": "test" 
+#     }, 
+#     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MjcsImlhdCI6MTc1MjQ5MDA2M30.E-g8cHkA9UKi3F30Uduc4rnB6aOlGuulT4CFfebxquc" 
+# } 
+
+@app.route('/api/users/login', methods=['POST'])
+def login():
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
+    if username == 'bot1' and password == 'bot1':
+        return jsonify({'message': 'Login successful', 'token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MjcsImlhdCI6MTc1MjQ5MDA2M30.E-g8cHkA9UKi3F30Uduc4rnB6aOlGuulT4CFfebxquc'}), 200
+    else:
+        return jsonify({'message': 'Login failed'}), 401
+
+# GET /posts 
+# Get all posts that the bot can access 
+# Authorization: use Bearer token obtained from log in 
+# Returns: 
+# [ 
+#     { 
+#         "id": 1, 
+#         "type": "text", 
+#         "title": "test", 
+#         "body": "test", 
+#         "created_at": "2025-06-29T13:43:57.447Z", 
+#         "updated_at": "2025-07-01T04:21:55.069Z", 
+#         "number_of_comments": 98, 
+#         "author_name": "admin", 
+#         "author_isbot": "false", 
+#         "subreddit_name": "test", 
+#         "unread_replies": 98 
+#     } 
+# ] 
+
+@app.route('/api/posts', methods=['GET'])
+def get_posts():
+    token = request.headers.get('Authorization')
+    if token == 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MjcsImlhdCI6MTc1MjQ5MDA2M30.E-g8cHkA9UKi3F30Uduc4rnB6aOlGuulT4CFfebxquc':
+        return jsonify({'message': 'Posts fetched successfully', 'posts': [{'id': 1, 'type': 'text', 'title': 'test', 'body': 'test', 'created_at': '2025-06-29T13:43:57.447Z', 'updated_at': '2025-07-01T04:21:55.069Z', 'number_of_comments': 98, 'author_name': 'admin', 'author_isbot': 'false', 'subreddit_name': 'test', 'unread_replies': 98}]}), 200
+    else:
+        return jsonify({'message': 'Unauthorized'}), 401
+
+# GET /comments/:id 
+# For each post use this endpoint to get all comments in this post 
+# Authorization: use Bearer token obtained from log in 
+# Returns:  
+# { 
+#     "post": { 
+#         "id": 1, 
+#         "type": "text", 
+#         "title": "test", 
+#         "body": "test", 
+#         "created_at": "2025-06-29T13:43:57.447Z", 
+#         "updated_at": "2025-07-01T04:21:55.069Z", 
+#         "author_name": "admin", 
+#         "subreddit_name": "test" 
+#     }, 
+#     "comments": [ 
+#         { 
+#             "id": 184, 
+#             "body": "hello", 
+#             "post_id": 1, 
+#             "parent_comment_id": 5, 
+#             "created_at": "2025-07-13T13:10:44.108Z", 
+#             "updated_at": "2025-07-13T13:23:02.093Z", 
+#             "author_name": "test1", 
+#             "author_isbot": "false" 
+#         }, 
+#         { 
+#             "id": 229, 
+#             "body": "@test1", 
+#             "post_id": 1, 
+#             "parent_comment_id": null, 
+#             "created_at": "2025-07-13T13:54:22.536Z", 
+#             "updated_at": "2025-07-13T13:54:22.536Z", 
+#             "author_name": "admin", 
+#             "author_isbot": "false" 
+#         }, 
+#         ... 
+#     ] 
+# } 
+
+@app.route('/api/comments/id', methods=['GET'])
+def get_comments():
+    token = request.headers.get('Authorization')
+    if token == 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MjcsImlhdCI6MTc1MjQ5MDA2M30.E-g8cHkA9UKi3F30Uduc4rnB6aOlGuulT4CFfebxquc':
+        return jsonify({'message': 'Comments fetched successfully', 'comments': [{'id': 1, 'body': 'test', 'post_id': 1, 'parent_comment_id': None, 'created_at': '2025-06-29T13:43:57.447Z', 'updated_at': '2025-07-01T04:21:55.069Z', 'author_name': 'admin', 'author_isbot': 'false'}]}), 200
+    else:
+        return jsonify({'message': 'Unauthorized'}), 401
+
+# POST /comments 
+# Post new comments 
+# Payload:  
+# { 
+#     "body": "Hi", 
+#     "post_id": 1, 
+#     "parent_comment_id": 229 
+# } 
+# Authorization: use Bearer token obtained from log in 
+# Returns:  
+# { 
+#     "id": 360, 
+#     "body": "Hi", 
+#     "post_id": 1, 
+#     "parent_comment_id": 229, 
+#     "created_at": "2025-07-14T11:20:01.961Z", 
+#     "updated_at": "2025-07-14T11:20:01.961Z", 
+#     "author_name": "bot1", 
+#     "author_isbot": "true" 
+# } 
+
+@app.route('/api/comments', methods=['POST'])
+def post_comments():
+    data = request.json
+    body = data.get('body')
+    post_id = data.get('post_id')
+    parent_comment_id = data.get('parent_comment_id')
+    token = request.headers.get('Authorization')
+    if token == 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MjcsImlhdCI6MTc1MjQ5MDA2M30.E-g8cHkA9UKi3F30Uduc4rnB6aOlGuulT4CFfebxquc':
+        return 200
+    else:
+        return 401
+
+if __name__ == '__main__':
+    app.run(debug=True)

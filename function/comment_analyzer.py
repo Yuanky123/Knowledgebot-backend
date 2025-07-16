@@ -43,7 +43,8 @@ class CommentAnalyzer:
         # 输出：当前评论的阶段，并返回给前端
         # new_comments_phase = self.llm_model.predict(new_comments)
         new_comments_phase = []
-        return new_comments_phase
+        graph = context['graph']
+        return new_comments_phase, graph
     
     def check_discussion_sufficiency(self, context, new_comments):
         """检查当前阶段讨论是否充分"""
