@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import json
 from datetime import datetime
 import os
+import arg
 
 # 从function模块导入各个组件
 from function import CommentAnalyzer, InterventionManager, ResponseGenerator, TimerManager
@@ -9,187 +10,127 @@ from function import CommentAnalyzer, InterventionManager, ResponseGenerator, Ti
 app = Flask(__name__)
 
 # 加载策略数据库
-def load_strategies():
+def load_strategies(Current_style):
     try:
-        with open('strategies.json', 'r', encoding='utf-8') as f:
-            return json.load(f)
+        if Current_style == 0:
+            with open('Database/Strategy/telling.json', 'r', encoding='utf-8') as f:
+                return json.load(f)
+        elif Current_style == 1:
+            with open('Database/Strategy/selling.json', 'r', encoding='utf-8') as f:
+                return json.load(f)
+        elif Current_style == 2:
+            with open('Database/Strategy/participating.json', 'r', encoding='utf-8') as f:
+                return json.load(f)
+        elif Current_style == 3:
+            with open('Database/Strategy/delegating.json', 'r', encoding='utf-8') as f:
+                return json.load(f)
+        else:
+            return {}
     except FileNotFoundError:
         return {}
 
-# 策略数据库
-strategies_db = load_strategies()
-
-# 初始化组件
-analyzer = CommentAnalyzer()
-intervention_manager = InterventionManager(strategies_db)
-response_generator = ResponseGenerator()
+def update_context_to_database():
+    # 更新Current_context到数据库
+    with open(Current_context['discussion_database_path'], 'w', encoding='utf-8') as f:
+        json.dump(Current_context, f, ensure_ascii=False, indent=4)
 
 # 定义全局变量
-Current_context = []  # 当前上下文
-Current_phase = 0  # 0:start 1: initiation, 2: Exploration, 3: Negotiation, 4: Co-Construction
-Current_is_sufficient = False  # 当前阶段讨论是否充分
-Current_style = [0, 1, 2, 3]  # 0: Telling, 1: Selling 2: Participating 3: Delegating
-Current_topic = [0, 1, 2, 3]  # 当前讨论话题
-Current_patience = 10  # 当前耐心值
+Current_context = { 'post': '', 
+                    'comments': [], 
+                    'phase': 0, 
+                    # 'is_sufficient': False, 
+                    'discussion_patience': arg.MAX_PATIENCE,
+                    'time_patience': arg.MAX_TIME_PATIENCE,
+                    'style': arg.CURRENT_STYLE,
+                    'topic': arg.CURRENT_TOPIC,
+                    'token': '',
+                    'discussion_database_path': arg.DATABASE_PATH + arg.CURRENT_STYLE + '/' + arg.CURRENT_TOPIC + '.json'
+                    }  # 当前上下文
 
-# 计时器超时回调函数
-def on_timeout_callback():
-    """当计时器超时时触发干预"""
-    global Current_context, Current_phase
-    
-    # 使用干预管理器进行超时干预
-    intervention_strategy = intervention_manager.intervene(Current_phase)
-    
-    # 生成干预响应
-    response = response_generator.generate_custom_response(intervention_strategy, Current_context)
-
-    # 更新上下文
-    Current_context.append(response)
-
-    return response
-
-# 初始化计时器管理器（默认30秒超时）
-timer_manager = TimerManager(timeout_seconds=30, callback_func=on_timeout_callback)
+# 策略数据库
+strategies_db = load_strategies(Current_context['style'])
+# 初始化干预管理器
+intervention_manager = InterventionManager(strategies_db)
+analyzer = CommentAnalyzer()
+response_generator = ResponseGenerator()
 
 @app.route('/api/init', methods=['POST'])
 def init():
     """初始化讨论"""
-    global Current_context, Current_phase, Current_is_sufficient, Current_topic
-    
-    try:
-        data = request.json or {}
-        
-        # 初始化全局变量
-        Current_context = []
-        Current_phase = 0
-        Current_is_sufficient = False
-        Current_topic = data.get('topic', '新讨论话题')
-        
-        # 重启计时器
-        timer_manager.start_timer()
-        
-        return jsonify({
-            'message': '讨论已初始化',
-            'topic': Current_topic,
-            'phase': Current_phase,
-            'phase_name': analyzer.discussion_phases.get('initiation', '初始阶段'),
-            'timer_status': timer_manager.get_status()
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    global Current_token
+    # POST/users/login 
+    # 设置登陆获得token，并设置token到全局变量
+    # Current_token =
+    # GET/posts
+    # 获取当前讨论的post内容
+    # Current_context['post'] = 
+    # 更新Current_context到数据库
+    pass
 
-@app.route('/api/process_comment', methods=['POST'])
-def process_comment():
-    """处理评论的主要端点"""
-    global Current_context, Current_phase, Current_is_sufficient, Current_topic
-    
-    
-    data = request.json
-    
-    # 提取数据 
-    new_context = data.get('context', [])
-    topic = data.get('topic', Current_topic[0])
-    
-    # 更新全局状态
-    Current_context = new_context
-    Current_topic = topic
-    
+# 计时器超时回调函数
+def on_timeout_callback():
+    global Current_context, Current_phase, Current_is_sufficient
+    # 获得当前post的评论
+    # POST /comments 
+    new_comments = request.json.get('comments', [])
     # 收到新评论时重置计时器
     timer_manager.update_activity()
-    
-    # 步骤1：分析最新评论阶段
-    Current_context[0]['message_phase'] = analyzer.analyze_phase(Current_context[0]['message'])
-    
-    # 步骤2：检查当前阶段讨论充分性
-    if Current_is_sufficient == False:
-        is_sufficient = analyzer.check_discussion_sufficiency(Current_context, Current_phase)
-        if is_sufficient:
-            Current_is_sufficient = True
-            Current_phase = Current_phase + 1
-            Current_patience = 10
+    # 对比new_comments和Current_context['comments']，如果new_comments和Current_context['comments']数量相同，则进行超时干预
+    if len(new_comments) == len(Current_context['comments']):
+        # 如果时间阶段耐心值耗尽，则进行超时干预
+        Current_context['time_patience'] = Current_context['time_patience'] - 1
+        if Current_context['time_patience'] <= 0:
+            # 恢复时间阶段耐心值
+            Current_context['time_patience'] = arg.MAX_TIME_PATIENCE
+            # 进行超时干预
+            intervention_strategy = intervention_manager.intervene(Current_context)
+            # 生成干预响应
+            response = response_generator.generate_custom_response(Current_context, intervention_strategy)
+            # 发送给前端
+            # POST/comments
+            # 更新上下文
+            Current_context['comments'].append(response)
+            # 更新数据库
+            update_context_to_database()
         else:
-            Current_is_sufficient = False
-
-    # 步骤3：决定是否需要干预和如何干预
-    if is_sufficient:
-        # 讨论充分，推进到下一阶段
-        # 使用推荐的策略风格进行阶段过渡干预
-        # 消耗耐心值
-        Current_patience = Current_patience - 1
-        if Current_patience <= 0:
-            # 耐心值耗尽，触发超时干预
-            Current_phase = Current_phase + 1
-            Current_is_sufficient = False
-            # 干预
+            pass
     else:
-        # 讨论不充分，进行促进干预
-        Current_patience = Current_patience - 1
-        if Current_patience <= 0:
-            # 干预
-    
-
-@app.route('/api/strategies', methods=['GET'])
-def get_strategies():
-    """获取所有策略"""
-    return jsonify(strategies_db)
-
-
-# 计时器相关的API端点
-@app.route('/api/timer/status', methods=['GET'])
-def get_timer_status():
-    """获取计时器状态"""
-    try:
-        status = timer_manager.get_status()
-        return jsonify(status)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/timer/start', methods=['POST'])
-def start_timer():
-    """启动计时器"""
-    try:
-        timer_manager.start_timer()
-        return jsonify({'message': '计时器已启动', 'status': timer_manager.get_status()})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/timer/stop', methods=['POST'])
-def stop_timer():
-    """停止计时器"""
-    try:
-        timer_manager.stop_timer()
-        return jsonify({'message': '计时器已停止', 'status': timer_manager.get_status()})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/timer/reset', methods=['POST'])
-def reset_timer():
-    """重置计时器"""
-    try:
-        timer_manager.reset_timer()
-        return jsonify({'message': '计时器已重置', 'status': timer_manager.get_status()})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/timer/config', methods=['POST'])
-def config_timer():
-    """配置计时器"""
-    try:
-        data = request.json
-        timeout_seconds = data.get('timeout_seconds', 30)
+        new_added_comments = new_comments[len(Current_context['comments']):]
+        # 步骤1：分析最新评论阶段
+        new_added_comments_phase = analyzer.analyze_phase(Current_context, new_added_comments)
+        for i in range(len(new_added_comments)):
+            new_added_comments[i]['message_phase'] = new_added_comments_phase[i]
         
-        timer_manager.set_timeout(timeout_seconds)
-        
-        return jsonify({
-            'message': f'计时器配置已更新，超时时间: {timeout_seconds}秒',
-            'status': timer_manager.get_status()
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        # 步骤2：检查当前应该协助的阶段
+        analysis_result = analyzer.check_discussion_sufficiency(Current_context, new_added_comments)
+        Current_context['comments'] = Current_context['comments'] + new_added_comments
+        # Current_context['is_sufficient'] = analysis_result['is_sufficient']
+        Current_context['discussion_patience'] = analysis_result['discussion_patience']
+        Current_context['phase'] = analysis_result['phase']
+
+        # 步骤3：决定是否需要干预和如何干预
+        # 如果耐心值耗尽，则进行促进干预，不然不干预
+        if Current_context['discussion_patience'] <= 0:
+            # 进行超时干预
+            intervention_strategy = intervention_manager.intervene(Current_context)
+            # 生成干预响应
+            response = response_generator.generate_custom_response(Current_context, intervention_strategy)
+            # 发送给前端
+            # POST/comments
+            # 更新上下文
+            Current_context['comments'].append(response)
+            # 更新数据库
+            update_context_to_database()
+        else:
+            pass
+    return response
+
+# 初始化计时器管理器
+timer_manager = TimerManager(timeout_seconds=arg.DEFAULT_TIMEOUT_SECONDS, callback_func=on_timeout_callback)
 
 if __name__ == '__main__':
     # 启动计时器
-    print("启动计时器...")
     timer_manager.start_timer()
     
-    app.run(debug=True, host='0.0.0.0', port=5000) 
+    # 使用arg.py中的环境变量配置
+    app.run(debug=arg.FLASK_DEBUG, host=arg.FLASK_HOST, port=arg.FLASK_PORT) 
