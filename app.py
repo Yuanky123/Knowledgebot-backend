@@ -35,6 +35,39 @@ def update_context_to_database():
     with open(Current_context['discussion_database_path'], 'w', encoding='utf-8') as f:
         json.dump(Current_context, f, ensure_ascii=False, indent=4)
 
+        
+
+# 定义全局变量
+Current_context = { 
+                    'subreddit': '',
+                    'post': {
+                        'title': '',
+                        'body': '',
+                        'id': '',
+                        'author_name': ''
+                    }, 
+                    'comments': [], 
+                    'phase': 0, 
+                    # 'is_sufficient': False, 
+                    'discussion_patience': arg.MAX_PATIENCE,
+                    'time_patience': arg.MAX_TIME_PATIENCE,
+                    'style': arg.CURRENT_STYLE,
+                    'topic': arg.CURRENT_TOPIC,
+                    'token': '',
+                    'discussion_database_path': arg.DATABASE_URL + str(arg.CURRENT_STYLE) + '/' + str(arg.CURRENT_TOPIC) + '.json',
+                    'graph':{
+                        'nodes':[],
+                        'edges':[]
+                    }
+                    }  # 当前上下文
+
+# 策略数据库
+strategies_db = load_strategies(Current_context['style'])
+# 初始化干预管理器
+intervention_manager = InterventionManager(strategies_db)
+analyzer = CommentAnalyzer()
+response_generator = ResponseGenerator()
+
 def make_api_request(method, url, headers=None, json_data=None, retry_on_auth_error=True):
     print(f"Making {method} request to {url}")
     global Current_context
@@ -123,43 +156,11 @@ def login():
     except requests.exceptions.RequestException as e:
         print(f"Error making login request: {e}")
 
-        
-
-# 定义全局变量
-Current_context = { 
-                    'subreddit': '',
-                    'post': {
-                        'title': '',
-                        'body': '',
-                        'id': '',
-                        'author_name': ''
-                    }, 
-                    'comments': [], 
-                    'phase': 0, 
-                    # 'is_sufficient': False, 
-                    'discussion_patience': arg.MAX_PATIENCE,
-                    'time_patience': arg.MAX_TIME_PATIENCE,
-                    'style': arg.CURRENT_STYLE,
-                    'topic': arg.CURRENT_TOPIC,
-                    'token': '',
-                    'discussion_database_path': arg.DATABASE_URL + str(arg.CURRENT_STYLE) + '/' + str(arg.CURRENT_TOPIC) + '.json',
-                    'graph':{
-                        'nodes':[],
-                        'edges':[]
-                    }
-                    }  # 当前上下文
-
-# 策略数据库
-strategies_db = load_strategies(Current_context['style'])
-# 初始化干预管理器
-intervention_manager = InterventionManager(strategies_db)
-analyzer = CommentAnalyzer()
-response_generator = ResponseGenerator()
-
 @app.route('/api/init', methods=['POST'])
 def init():
     """初始化讨论"""
     global Current_context
+    print('Starting initialization...')
     
     try:
         # First, perform login to get token
@@ -170,11 +171,11 @@ def init():
         
         if post_response.status_code == 200:
             post_data = post_response.json()
-            if 'post' in post_data:
-                Current_context['post']['title'] = post_data['post']['title']
-                Current_context['post']['body'] = post_data['post']['body']
-                Current_context['post']['id'] = post_data['post']['id']
-                Current_context['post']['author_name'] = post_data['post']['author_name']
+            if len(post_data) > 0:
+                Current_context['post']['title'] = post_data[0]['title']
+                Current_context['post']['body'] = post_data[0]['body']
+                Current_context['post']['id'] = post_data[0]['id']
+                Current_context['post']['author_name'] = post_data[0]['author_name']
                 print(f"Post loaded: {Current_context['post']['title']}")
             else:
                 print("No post found in response")
@@ -195,8 +196,27 @@ def on_timeout_callback(timeout_info=None):
     global Current_context, Current_phase, Current_is_sufficient
     # 获得当前post的评论
     # GET /comments 
+    
+    # Check if we have a post ID, if not fetch posts again
+    if not Current_context['post']['id']:
+        print("No post ID found, fetching posts again...")
+        post_response = make_api_request('GET', f"{arg.FRONTEND_URL}/posts")
+        if post_response.status_code == 200:
+            post_data = post_response.json()
+            # print(post_data)
+            if len(post_data) > 0:
+                Current_context['post']['title'] = post_data[0]['title']
+                Current_context['post']['body'] = post_data[0]['body']
+                Current_context['post']['id'] = post_data[0]['id']
+                Current_context['post']['author_name'] = post_data[0]['author_name']
+                print(f"Updated post: {Current_context['post']['title']}")
+            else:
+                print("No post found in response")
+                return
+    
     new_comments_response = make_api_request('GET', f"{arg.FRONTEND_URL}/comments/{Current_context['post']['id']}")
     new_comments = new_comments_response.json().get('comments', [])
+    # print(new_comments)
     # 收到新评论时重置计时器
     timer_manager.update_activity()
     # 对比new_comments和Current_context['comments']，如果new_comments和Current_context['comments']数量相同，则进行超时干预
