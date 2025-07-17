@@ -67,8 +67,9 @@ def init():
     # Current_token =
     # GET/posts
     # 获取当前讨论的post内容
-    # Current_context['post'] = 
+    # Current_context['post'] = 获得的内容
     # 更新Current_context到数据库
+    # update_context_to_database()
     pass
 
 # 计时器超时回调函数
