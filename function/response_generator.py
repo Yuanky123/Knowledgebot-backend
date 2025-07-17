@@ -9,5 +9,9 @@ class ResponseGenerator:
     
     def generate_custom_response(self, context, strategy):
         """根据策略生成回复"""
-        response = {}
+        response = {
+            'body': 'test reply',
+            'post_id': context['post']['id'],
+            'parent_comment_id': None,
+        }
         return response

@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 import os
 import arg
+import requests
 
 # 从function模块导入各个组件
 from function import CommentAnalyzer, InterventionManager, ResponseGenerator, TimerManager
@@ -34,8 +35,105 @@ def update_context_to_database():
     with open(Current_context['discussion_database_path'], 'w', encoding='utf-8') as f:
         json.dump(Current_context, f, ensure_ascii=False, indent=4)
 
+def make_api_request(method, url, headers=None, json_data=None, retry_on_auth_error=True):
+    print(f"Making {method} request to {url}")
+    global Current_context
+    
+    # Set default headers if not provided
+    if headers is None:
+        headers = {}
+    
+    # Add authorization header if token exists
+    if Current_context.get('token'):
+        headers['Authorization'] = f'Bearer {Current_context["token"]}'
+    
+    # Make the initial request
+    try:
+        if method.upper() == 'GET':
+            response = requests.get(url, headers=headers)
+        elif method.upper() == 'POST':
+            response = requests.post(url, headers=headers, json=json_data)
+        elif method.upper() == 'PUT':
+            response = requests.put(url, headers=headers, json=json_data)
+        elif method.upper() == 'DELETE':
+            response = requests.delete(url, headers=headers)
+        else:
+            raise ValueError(f"Unsupported HTTP method: {method}")
+        
+        # Check for authentication errors
+        if retry_on_auth_error and response.status_code in [401, 403]:
+            print(f"Authentication error ({response.status_code}), attempting to re-login...")
+            
+            # Try to re-login
+            login()
+            
+            # If we have a new token, retry the request
+            if Current_context.get('token'):
+                headers['Authorization'] = f'Bearer {Current_context["token"]}'
+                
+                if method.upper() == 'GET':
+                    response = requests.get(url, headers=headers)
+                elif method.upper() == 'POST':
+                    response = requests.post(url, headers=headers, json=json_data)
+                elif method.upper() == 'PUT':
+                    response = requests.put(url, headers=headers, json=json_data)
+                elif method.upper() == 'DELETE':
+                    response = requests.delete(url, headers=headers)
+                
+                print(f"Re-authenticated request completed with status: {response.status_code}")
+            else:
+                print("Re-login failed, cannot retry request")
+        
+        return response
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Request failed: {e}")
+        raise
+
+def login():
+    print("Logging in...")
+    global Current_context
+    
+    # POST /users/login - 设置登录获得token
+    login_payload = {
+        'username': arg.USERNAME,
+        'password': arg.PASSWORD
+    }
+    
+    try:
+        login_response = requests.post(f"{arg.FRONTEND_URL}/users/login", json=login_payload)
+        login_response.raise_for_status()  # Raise an exception for bad status codes
+        
+        result = login_response.json()
+        
+        # Extract and print the required fields
+        if 'user' in result and 'selectedsubreddit' in result['user']:
+            print(f"Selected Subreddit: {result['user']['selectedsubreddit']}")
+            Current_context['subreddit'] = result['user']['selectedsubreddit']
+        
+        if 'token' in result:
+            print(f"Token: {result['token']}")
+            Current_context['token'] = result['token']
+        
+        
+        
+    
+
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Error making login request: {e}")
+
+        
+
 # 定义全局变量
-Current_context = { 'post': '', 
+Current_context = { 
+                    'subreddit': '',
+                    'post': {
+                        'title': '',
+                        'body': '',
+                        'id': '',
+                        'author_name': ''
+                    }, 
                     'comments': [], 
                     'phase': 0, 
                     # 'is_sufficient': False, 
@@ -44,7 +142,7 @@ Current_context = { 'post': '',
                     'style': arg.CURRENT_STYLE,
                     'topic': arg.CURRENT_TOPIC,
                     'token': '',
-                    'discussion_database_path': arg.DATABASE_PATH + str(arg.CURRENT_STYLE) + '/' + str(arg.CURRENT_TOPIC) + '.json',
+                    'discussion_database_path': arg.DATABASE_URL + str(arg.CURRENT_STYLE) + '/' + str(arg.CURRENT_TOPIC) + '.json',
                     'graph':{
                         'nodes':[],
                         'edges':[]
@@ -61,23 +159,44 @@ response_generator = ResponseGenerator()
 @app.route('/api/init', methods=['POST'])
 def init():
     """初始化讨论"""
-    global Current_token
-    # POST/users/login 
-    # 设置登陆获得token，并设置token到全局变量
-    # Current_token =
-    # GET/posts
-    # 获取当前讨论的post内容
-    # Current_context['post'] = 获得的内容
-    # 更新Current_context到数据库
-    # update_context_to_database()
-    pass
+    global Current_context
+    
+    try:
+        # First, perform login to get token
+        login()
+        
+        # GET/posts - 获取当前讨论的post内容
+        post_response = make_api_request('GET', f"{arg.FRONTEND_URL}/posts")
+        
+        if post_response.status_code == 200:
+            post_data = post_response.json()
+            if 'post' in post_data:
+                Current_context['post']['title'] = post_data['post']['title']
+                Current_context['post']['body'] = post_data['post']['body']
+                Current_context['post']['id'] = post_data['post']['id']
+                Current_context['post']['author_name'] = post_data['post']['author_name']
+                print(f"Post loaded: {Current_context['post']['title']}")
+            else:
+                print("No post found in response")
+        else:
+            print(f"Failed to get posts, status code: {post_response.status_code}")
+        
+        # 更新Current_context到数据库
+        update_context_to_database()
+        
+        
+    except Exception as e:
+        print(f"Error during initialization: {e}")
+
+
 
 # 计时器超时回调函数
-def on_timeout_callback():
+def on_timeout_callback(timeout_info=None):
     global Current_context, Current_phase, Current_is_sufficient
     # 获得当前post的评论
-    # POST /comments 
-    new_comments = request.json.get('comments', [])
+    # GET /comments 
+    new_comments_response = make_api_request('GET', f"{arg.FRONTEND_URL}/comments/{Current_context['post']['id']}")
+    new_comments = new_comments_response.json().get('comments', [])
     # 收到新评论时重置计时器
     timer_manager.update_activity()
     # 对比new_comments和Current_context['comments']，如果new_comments和Current_context['comments']数量相同，则进行超时干预
@@ -93,8 +212,13 @@ def on_timeout_callback():
             response = response_generator.generate_custom_response(Current_context, intervention_strategy)
             # 发送给前端
             # POST/comments
+            comment_response = make_api_request('POST', f"{arg.FRONTEND_URL}/comments", json_data=response)
+            if comment_response.status_code == 200:
+                print("Comment posted successfully")
+            else:
+                print("Failed to post comment")
             # 更新上下文
-            Current_context['comments'].append(response)
+            Current_context['comments'].append(comment_response)
             # 更新数据库
             update_context_to_database()
         else:
@@ -123,8 +247,13 @@ def on_timeout_callback():
             response = response_generator.generate_custom_response(Current_context, intervention_strategy)
             # 发送给前端
             # POST/comments
+            comment_response = make_api_request('POST', f"{arg.FRONTEND_URL}/comments", json_data=response)
+            if comment_response.status_code == 200:
+                print("Comment posted successfully")
+            else:
+                print("Failed to post comment")
             # 更新上下文
-            Current_context['comments'].append(response)
+            Current_context['comments'].append(comment_response)
             # 更新数据库
             update_context_to_database()
         else:

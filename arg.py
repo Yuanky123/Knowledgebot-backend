@@ -11,7 +11,7 @@ FLASK_HOST = os.getenv('FLASK_HOST', '0.0.0.0')
 FLASK_PORT = int(os.getenv('FLASK_PORT', '5000'))
 
 # 数据库配置
-DATABASE_PATH = os.getenv('DATABASE_PATH', 'Database/')
+DATABASE_URL = os.getenv('DATABASE_URL', 'Database/')
 
 # API密钥和认证
 SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key-here')
@@ -35,8 +35,26 @@ CURRENT_TOPIC = int(os.getenv('CURRENT_TOPIC', '0')) # 0: 新讨论话题 1: 新
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'DEBUG')
 LOG_FILE = os.getenv('LOG_FILE', 'app.log')
 
+# 跨域配置
+CORS_ORIGINS = os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://localhost:8080').split(',')
+
+# 文件上传配置
+UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', 'uploads')
+MAX_CONTENT_LENGTH = int(os.getenv('MAX_CONTENT_LENGTH', '16777216'))
+
+# 邮件配置
+MAIL_SERVER = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
+MAIL_PORT = int(os.getenv('MAIL_PORT', '587'))
+MAIL_USE_TLS = os.getenv('MAIL_USE_TLS', 'True').lower() == 'true'
+MAIL_USERNAME = os.getenv('MAIL_USERNAME', '')
+MAIL_PASSWORD = os.getenv('MAIL_PASSWORD', '')
+
 # 环境标识
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
+
+USERNAME = os.getenv('USERNAME', '')
+PASSWORD = os.getenv('PASSWORD', '')
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5001')
 
 # 打印配置信息（仅在开发环境）
 if FLASK_ENV == 'development':
@@ -45,6 +63,9 @@ if FLASK_ENV == 'development':
     print(f"  - Flask调试模式: {FLASK_DEBUG}")
     print(f"  - Flask主机: {FLASK_HOST}")
     print(f"  - Flask端口: {FLASK_PORT}")
-    print(f"  - 数据库路径: {DATABASE_PATH}")
+    print(f"  - 数据库URL: {DATABASE_URL}")
     print(f"  - 默认超时时间: {DEFAULT_TIMEOUT_SECONDS}秒")
     print(f"  - 最大耐心值: {MAX_PATIENCE}")
+    print(f"  - 用户名: {USERNAME}")
+    print(f"  - 密码: {PASSWORD}")
+    print(f"  - 前端URL: {FRONTEND_URL}")

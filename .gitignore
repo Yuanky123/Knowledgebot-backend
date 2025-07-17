@@ -1,0 +1,10 @@
+.env
+venv
+.pyc
+.DS_Store
+__pycache__/arg.cpython-39.pyc
+function/__pycache__/__init__.cpython-39.pyc
+function/__pycache__/comment_analyzer.cpython-39.pyc
+function/__pycache__/intervention_manager.cpython-39.pyc
+function/__pycache__/response_generator.cpython-39.pyc
+function/__pycache__/timer_manager.cpython-39.pyc
