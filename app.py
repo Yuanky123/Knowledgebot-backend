@@ -233,6 +233,7 @@ def on_timeout_callback(timeout_info=None):
             # 发送给前端
             # POST/comments
             comment_response = make_api_request('POST', f"{arg.FRONTEND_URL}/comments", json_data=response)
+            # print(comment_response)
             if comment_response.status_code == 200:
                 print("Comment posted successfully")
             else:
@@ -242,6 +243,7 @@ def on_timeout_callback(timeout_info=None):
             # 更新数据库
             update_context_to_database()
         else:
+            print(f"Current patience: {Current_context['discussion_patience']}")
             pass
     else:
         new_added_comments = new_comments[len(Current_context['comments']):]
@@ -255,7 +257,7 @@ def on_timeout_callback(timeout_info=None):
         analysis_result = analyzer.check_discussion_sufficiency(Current_context, new_added_comments)
         Current_context['comments'] = Current_context['comments'] + new_added_comments
         # Current_context['is_sufficient'] = analysis_result['is_sufficient']
-        Current_context['discussion_patience'] = analysis_result['discussion_patience']
+        Current_context['discussion_patience'] = analysis_result['patience']
         Current_context['phase'] = analysis_result['phase']
 
         # 步骤3：决定是否需要干预和如何干预
@@ -268,6 +270,7 @@ def on_timeout_callback(timeout_info=None):
             # 发送给前端
             # POST/comments
             comment_response = make_api_request('POST', f"{arg.FRONTEND_URL}/comments", json_data=response)
+            # print(comment_response)
             if comment_response.status_code == 200:
                 print("Comment posted successfully")
             else:
@@ -278,7 +281,7 @@ def on_timeout_callback(timeout_info=None):
             update_context_to_database()
         else:
             pass
-    return response
+    # return response
 
 # 初始化计时器管理器
 timer_manager = TimerManager(timeout_seconds=arg.DEFAULT_TIMEOUT_SECONDS, callback_func=on_timeout_callback)

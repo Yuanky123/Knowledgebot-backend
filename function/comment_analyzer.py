@@ -42,7 +42,7 @@ class CommentAnalyzer:
         # 输入：当前评论
         # 输出：当前评论的阶段，并返回给前端
         # new_comments_phase = self.llm_model.predict(new_comments)
-        new_comments_phase = []
+        new_comments_phase = [0] * len(new_comments)
         graph = context['graph']
         return new_comments_phase, graph
     
