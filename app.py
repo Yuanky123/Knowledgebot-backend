@@ -141,7 +141,6 @@ def login():
         # Extract and print the required fields
         if 'user' in result and 'selectedsubreddit' in result['user']:
             print(f"Selected Subreddit: {result['user']['selectedsubreddit']}")
-            Current_context['topic'] = result['user']['selectedsubreddit']
         
         if 'token' in result:
             print(f"Token: {result['token']}")
@@ -222,6 +221,7 @@ def on_timeout_callback(timeout_info=None):
         # 如果时间阶段耐心值耗尽，则进行超时干预
         Current_context['time_patience'] = Current_context['time_patience'] - 1
         if Current_context['time_patience'] <= 0:
+
             # 恢复时间阶段耐心值
             Current_context['time_patience'] = arg.MAX_TIME_PATIENCE
             # 进行超时干预
@@ -230,15 +230,15 @@ def on_timeout_callback(timeout_info=None):
             response = response_generator.generate_custom_response(Current_context, intervention_strategy)
             # 发送给前端
             # POST/comments
-            comment_response = make_api_request('POST', f"{arg.FRONTEND_URL}/comments", json_data=response)
-            comment_response_data = comment_response.json()
-            print(comment_response_data)
-            if comment_response.status_code == 200:
-                print("Comment posted successfully")
-            else:
-                print("Failed to post comment")
-            # 更新上下文
-            Current_context['comments'].append(comment_response_data)
+            # comment_response = make_api_request('POST', f"{arg.FRONTEND_URL}/comments", json_data=response)
+            # comment_response_data = comment_response.json()
+            # # print(comment_response_data)
+            # if comment_response.status_code == 200:
+            #     print("Comment posted successfully")
+            # else:
+            #     print("Failed to post comment")
+            # # 更新上下文
+            # Current_context['comments'].append(comment_response_data)
             # 更新数据库
             update_context_to_database()
         else:
@@ -250,9 +250,13 @@ def on_timeout_callback(timeout_info=None):
         new_added_comments_phase = analyzer.analyze_phase(Current_context, new_added_comments)
         for i in range(len(new_added_comments)):
             new_added_comments[i]['message_phase'] = new_added_comments_phase[i]
+        # print(new_added_comments)
         Current_context['graph'] = analyzer.add_to_graph(Current_context, new_added_comments)
+        print(Current_context['comments'])
+        # print(new_added_comments)
         Current_context['comments'] = Current_context['comments'] + new_added_comments
-        
+        print(Current_context['comments'])
+
         # 步骤2：检查当前应该协助的阶段
         analysis_result = analyzer.check_discussion_sufficiency(Current_context, new_added_comments)
         # Current_context['is_sufficient'] = analysis_result['is_sufficient']
@@ -268,25 +272,25 @@ def on_timeout_callback(timeout_info=None):
             response = response_generator.generate_custom_response(Current_context, intervention_strategy)
             # 发送给前端
             # POST/comments
-            comment_response_data = comment_response.json()
-            print(comment_response_data)
-            if comment_response.status_code == 200:
-                print("Comment posted successfully")
-            else:
-                print("Failed to post comment")
-            # 更新上下文
-            Current_context['comments'].append(comment_response_data)
+            # comment_response_data = comment_response.json()
+            # # print(comment_response_data)
+            # if comment_response.status_code == 200:
+            #     print("Comment posted successfully")
+            # else:
+            #     print("Failed to post comment")
+            # # 更新上下文
+            # Current_context['comments'].append(comment_response_data)
             # 更新数据库
-            update_context_to_database()
         else:
             pass
+        update_context_to_database()
     # return response
 
 # 初始化计时器管理器
 timer_manager = TimerManager(timeout_seconds=arg.DEFAULT_TIMEOUT_SECONDS, callback_func=on_timeout_callback)
 
 if __name__ == '__main__':
-    init()
+    # init()
     # 启动计时器
     timer_manager.start_timer()
     
