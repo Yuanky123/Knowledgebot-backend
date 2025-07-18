@@ -66,11 +66,16 @@ class CommentAnalyzer:
         return False
 
     def analyze_connection_with_tree(self, context, new_comment, tree_id):
-        # randomly return true or false
+        # Extract all comments/nodes in the given tree_id from the graph
+        nodes = context['graph']['nodes']
+        tree_nodes = [n for n in nodes if n.get('tree_id') == tree_id]
+        # You can use tree_nodes for your analysis logic
+        # For demonstration, just print the ids and return random
+        print(f"Analyzing connection for comment {new_comment.get('id')} with tree {tree_id}, nodes: {[n['id'] for n in tree_nodes]}")
         result = random.choice([True, False])
         print(tree_id, result)
         return result
-    
+
     def add_to_graph(self, context, new_comments):
         graph = context['graph']
         nodes = graph.get('nodes', [])
@@ -99,50 +104,19 @@ class CommentAnalyzer:
                 max_tree_id += 1
                 node_id_map[cid]['tree_id'] = max_tree_id
                 continue
-
-            # PHASE 3: check connection with each tree
+            # PHASE 3: check connection with each tree (no tree reconstruction)
             if phase == 3:
-                # Build current tree mapping
-                adj = defaultdict(set)
-                for e in edges:
-                    adj[e['source']].add(e['target'])
-                    adj[e['target']].add(e['source'])
-                # Find all trees (connected components)
-                visited = set()
-                tree_id_map = {}
-                component_nodes = {}
-                tree_counter = 0
-                for node in nodes:
-                    nid = node['id']
-                    if nid in visited:
-                        continue
-                    queue = deque([nid])
-                    component = []
-                    while queue:
-                        curr = queue.popleft()
-                        if curr in visited:
-                            continue
-                        visited.add(curr)
-                        component.append(curr)
-                        for neighbor in adj[curr]:
-                            if neighbor not in visited:
-                                queue.append(neighbor)
-                    for n in component:
-                        tree_id_map[n] = tree_counter
-                    component_nodes[tree_counter] = component
-                    tree_counter += 1
                 found_connection = False
-                # print(component_nodes)
-                for t_id, comp in component_nodes.items():
-                    if self.analyze_connection_with_tree(context, comment, t_id + 1):
-                        node_id_map[cid]['tree_id'] = t_id + 1
+                for t_id in range(1, max_tree_id + 1):
+                    if self.analyze_connection_with_tree(context, comment, t_id):
+                        node_id_map[cid]['tree_id'] = t_id
                         found_connection = True
                         break
                 if not found_connection:
                     node_id_map[cid]['tree_id'] = -1
                 continue
-
-            # PHASE 2: add edges, then reconstruct trees
+            
+            # PHASE 2: add edges, then update tree ids efficiently
             if phase == 2:
                 connected_tree_ids = set()
                 parent_id = comment.get('parent_comment_id')
