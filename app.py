@@ -39,7 +39,6 @@ def update_context_to_database():
 
 # 定义全局变量
 Current_context = { 
-                    'subreddit': '',
                     'post': {
                         'title': '',
                         'body': '',
@@ -54,12 +53,12 @@ Current_context = {
                     'style': arg.CURRENT_STYLE,
                     'topic': arg.CURRENT_TOPIC,
                     'token': '',
-                    'discussion_database_path': arg.DATABASE_PATH + str(arg.CURRENT_STYLE) + '/' + str(arg.CURRENT_TOPIC) + '.json',
+                    'discussion_database_path': arg.DATABASE_PATH + '/' + str(arg.CURRENT_TOPIC) + '.json',
                     'graph':{
                         'nodes':[],
                         'edges':[]
                     }
-                    }  # 当前上下文
+                }  # 当前上下文
 
 # 策略数据库
 strategies_db = load_strategies(Current_context['style'])
@@ -142,7 +141,7 @@ def login():
         # Extract and print the required fields
         if 'user' in result and 'selectedsubreddit' in result['user']:
             print(f"Selected Subreddit: {result['user']['selectedsubreddit']}")
-            Current_context['subreddit'] = result['user']['selectedsubreddit']
+            Current_context['topic'] = result['user']['selectedsubreddit']
         
         if 'token' in result:
             print(f"Token: {result['token']}")
@@ -232,13 +231,14 @@ def on_timeout_callback(timeout_info=None):
             # 发送给前端
             # POST/comments
             comment_response = make_api_request('POST', f"{arg.FRONTEND_URL}/comments", json_data=response)
-            # print(comment_response)
+            comment_response_data = comment_response.json()
+            print(comment_response_data)
             if comment_response.status_code == 200:
                 print("Comment posted successfully")
             else:
                 print("Failed to post comment")
             # 更新上下文
-            Current_context['comments'].append(comment_response)
+            Current_context['comments'].append(comment_response_data)
             # 更新数据库
             update_context_to_database()
         else:
@@ -247,14 +247,14 @@ def on_timeout_callback(timeout_info=None):
     else:
         new_added_comments = new_comments[len(Current_context['comments']):]
         # 步骤1：分析最新评论阶段
-        [new_added_comments_phase, graph] = analyzer.analyze_phase(Current_context, new_added_comments)
+        new_added_comments_phase = analyzer.analyze_phase(Current_context, new_added_comments)
         for i in range(len(new_added_comments)):
             new_added_comments[i]['message_phase'] = new_added_comments_phase[i]
-        Current_context['graph'] = graph
+        Current_context['graph'] = analyzer.add_to_graph(Current_context, new_added_comments)
+        Current_context['comments'] = Current_context['comments'] + new_added_comments
         
         # 步骤2：检查当前应该协助的阶段
         analysis_result = analyzer.check_discussion_sufficiency(Current_context, new_added_comments)
-        Current_context['comments'] = Current_context['comments'] + new_added_comments
         # Current_context['is_sufficient'] = analysis_result['is_sufficient']
         Current_context['discussion_patience'] = analysis_result['patience']
         Current_context['phase'] = analysis_result['phase']
@@ -268,14 +268,14 @@ def on_timeout_callback(timeout_info=None):
             response = response_generator.generate_custom_response(Current_context, intervention_strategy)
             # 发送给前端
             # POST/comments
-            comment_response = make_api_request('POST', f"{arg.FRONTEND_URL}/comments", json_data=response)
-            # print(comment_response)
+            comment_response_data = comment_response.json()
+            print(comment_response_data)
             if comment_response.status_code == 200:
                 print("Comment posted successfully")
             else:
                 print("Failed to post comment")
             # 更新上下文
-            Current_context['comments'].append(comment_response)
+            Current_context['comments'].append(comment_response_data)
             # 更新数据库
             update_context_to_database()
         else:
@@ -286,6 +286,7 @@ def on_timeout_callback(timeout_info=None):
 timer_manager = TimerManager(timeout_seconds=arg.DEFAULT_TIMEOUT_SECONDS, callback_func=on_timeout_callback)
 
 if __name__ == '__main__':
+    init()
     # 启动计时器
     timer_manager.start_timer()
     
