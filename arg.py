@@ -11,7 +11,7 @@ FLASK_HOST = os.getenv('FLASK_HOST', '0.0.0.0')
 FLASK_PORT = int(os.getenv('FLASK_PORT', '5000'))
 
 # 数据库配置
-DATABASE_URL = os.getenv('DATABASE_URL', 'Database/')
+DATABASE_PATH = os.getenv('DATABASE_PATH', 'Database/')
 
 # API密钥和认证
 SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key-here')

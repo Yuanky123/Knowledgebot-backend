@@ -54,7 +54,7 @@ Current_context = {
                     'style': arg.CURRENT_STYLE,
                     'topic': arg.CURRENT_TOPIC,
                     'token': '',
-                    'discussion_database_path': arg.DATABASE_URL + str(arg.CURRENT_STYLE) + '/' + str(arg.CURRENT_TOPIC) + '.json',
+                    'discussion_database_path': arg.DATABASE_PATH + str(arg.CURRENT_STYLE) + '/' + str(arg.CURRENT_TOPIC) + '.json',
                     'graph':{
                         'nodes':[],
                         'edges':[]
@@ -184,7 +184,6 @@ def init():
         
         # 更新Current_context到数据库
         update_context_to_database()
-        
         
     except Exception as e:
         print(f"Error during initialization: {e}")
