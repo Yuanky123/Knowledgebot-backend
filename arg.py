@@ -63,7 +63,7 @@ if FLASK_ENV == 'development':
     print(f"  - Flask调试模式: {FLASK_DEBUG}")
     print(f"  - Flask主机: {FLASK_HOST}")
     print(f"  - Flask端口: {FLASK_PORT}")
-    print(f"  - 数据库URL: {DATABASE_URL}")
+    print(f"  - 数据库URL: {DATABASE_PATH}")
     print(f"  - 默认超时时间: {DEFAULT_TIMEOUT_SECONDS}秒")
     print(f"  - 最大耐心值: {MAX_PATIENCE}")
     print(f"  - 用户名: {USERNAME}")
