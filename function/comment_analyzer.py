@@ -45,16 +45,21 @@ class CommentAnalyzer:
         # 输入：当前评论
         # 输出：当前评论的阶段，并返回给前端
         # new_comments_phase = self.llm_model.predict(new_comments)
-        new_comments_phase = [random.choice([1, 2, 3])] * len(new_comments)
-        for i in range(len(new_comments)):
-            if new_comments[i].get('parent_comment_id') is not None:
-                new_comments_phase[i] = 2
-        new_comments_phase[0] = 1
+        # new_comments_phase = [random.choice([1, 2, 3])] * len(new_comments)
+        # for i in range(len(new_comments)):
+        #     if new_comments[i].get('parent_comment_id') is not None:
+        #         new_comments_phase[i] = 2
+        # new_comments_phase[0] = 1
+        new_comments_phase = [1, 1, 1, 2, 2, 2, 2, 0, 3, 2]
         return new_comments_phase
 
     def analyze_connection(self, context, new_comment, past_comment):
         # randomly return true or false
-        return random.choice([True, False])
+        # return random.choice([True, False])
+        print(past_comment.get('body'))
+        if new_comment.get('id') == 406 and past_comment.get('id') in [397, 399]:
+            return True
+        return False
 
     def analyze_connection_with_tree(self, context, new_comment, tree_id):
         # randomly return true or false
@@ -65,80 +70,108 @@ class CommentAnalyzer:
         nodes = graph.get('nodes', [])
         edges = graph.get('edges', [])
         node_id_map = {node['id']: node for node in nodes}
-        from collections import defaultdict, deque
-        # 1. Drop all phase 0 comments
-        filtered_comments = [c for c in new_comments if c.get('message_phase', 0) != 0]
+
+        # 1. Drop all phase 0/4 comments
+        filtered_comments = [c for c in new_comments if c.get('message_phase', 0) not in [0, 4]]
+
+        # Find current max tree id
+        existing_tree_ids = [node.get('tree_id', -1) for node in nodes if node.get('tree_id', -1) >= 0]
+        max_tree_id = max(existing_tree_ids) if existing_tree_ids else 0
+        # Build a lookup for all comments (old and new) by id
+        all_comments = {c['id']: c for c in (context.get('comments', []) + new_comments)}
         for comment in filtered_comments:
-            # print(comment)
             cid = comment['id']
             phase = comment.get('message_phase', 0)
-            # Only add node if not already present
-            if cid not in node_id_map and phase != 0:
+
+            # append new node
+            if cid not in node_id_map and phase != 0 and phase != 4:
                 node = {'id': cid, 'phase': phase}
                 nodes.append(node)
                 node_id_map[cid] = node
-            # Analyze phase 2 comments: add edges
+            # PHASE 1: assign new tree id, no edge, no tree update
+            if phase == 1:
+                max_tree_id += 1
+                node_id_map[cid]['tree_id'] = max_tree_id
+                continue
+
+            # PHASE 3: check connection with each tree
+            if phase == 3:
+                # Build current tree mapping
+                adj = defaultdict(set)
+                for e in edges:
+                    adj[e['source']].add(e['target'])
+                    adj[e['target']].add(e['source'])
+                # Find all trees (connected components)
+                visited = set()
+                tree_id_map = {}
+                component_nodes = {}
+                tree_counter = 0
+                for node in nodes:
+                    nid = node['id']
+                    if nid in visited:
+                        continue
+                    queue = deque([nid])
+                    component = []
+                    while queue:
+                        curr = queue.popleft()
+                        if curr in visited:
+                            continue
+                        visited.add(curr)
+                        component.append(curr)
+                        for neighbor in adj[curr]:
+                            if neighbor not in visited:
+                                queue.append(neighbor)
+                    for n in component:
+                        tree_id_map[n] = tree_counter
+                    component_nodes[tree_counter] = component
+                    tree_counter += 1
+                found_connection = False
+                for t_id, comp in component_nodes.items():
+                    if self.analyze_connection_with_tree(context, comment, t_id):
+                        node_id_map[cid]['tree_id'] = t_id
+                        found_connection = True
+                        break
+                if not found_connection:
+                    node_id_map[cid]['tree_id'] = -1
+                continue
+
+            # PHASE 2: add edges, then reconstruct trees
             if phase == 2:
+                connected_tree_ids = set()
                 parent_id = comment.get('parent_comment_id')
                 if parent_id is not None and parent_id in node_id_map:
                     if not any(e for e in edges if e['source'] == parent_id and e['target'] == cid):
                         edges.append({'source': parent_id, 'target': cid})
+                    parent_tree_id = node_id_map[parent_id].get('tree_id', None)
+                    if parent_tree_id is not None and parent_tree_id >= 0:
+                        connected_tree_ids.add(parent_tree_id)
                 for past_node in nodes:
                     past_id = past_node['id']
                     if past_id == cid or past_id == parent_id:
                         continue
                     if past_node.get('phase', 0) not in [1, 2]:
                         continue
+                    past_comment = all_comments.get(past_id, past_node)
                     if not any(e for e in edges if (e['source'] == past_id and e['target'] == cid) or (e['source'] == cid and e['target'] == past_id)):
-                        if self.analyze_connection(context, comment, past_node):
+                        if self.analyze_connection(context, comment, past_comment):
                             edges.append({'source': past_id, 'target': cid})
-            # --- Detect trees and assign tree_id after each comment ---
-            # Build undirected adjacency
-            adj = defaultdict(set)
-            for e in edges:
-                adj[e['source']].add(e['target'])
-                adj[e['target']].add(e['source'])
-            visited = set()
-            tree_id_map = {}
-            tree_counter = 0
-            component_nodes = {}  # tree_id -> list of node ids
-            for node in nodes:
-                nid = node['id']
-                if nid in visited:
-                    continue
-                queue = deque([nid])
-                component = []
-                while queue:
-                    curr = queue.popleft()
-                    if curr in visited:
-                        continue
-                    visited.add(curr)
-                    component.append(curr)
-                    for neighbor in adj[curr]:
-                        if neighbor not in visited:
-                            queue.append(neighbor)
-                for comp_id in component:
-                    tree_id_map[comp_id] = tree_counter
-                component_nodes[tree_counter] = component
-                tree_counter += 1
-            # Update nodes with tree_id, but for phase 2/3 isolated nodes assign -1
-            print(tree_id_map)
-            for node in nodes:
-                tid = tree_id_map.get(node['id'], -2) + 1
-                # If phase 2 and isolated (tree size 1), assign -1
-                if node.get('phase', 0) == 2 and len(component_nodes.get(tid, [])) == 1:
-                    node['tree_id'] = -1
+                            past_tree_id = node_id_map[past_id].get('tree_id', None)
+                            if past_tree_id is not None and past_tree_id >= 0:
+                                connected_tree_ids.add(past_tree_id)
+                # Assign tree id
+                if not connected_tree_ids:
+                    max_tree_id += 1
+                    node_id_map[cid]['tree_id'] = max_tree_id
                 else:
-                    node['tree_id'] = tid
-            # --- For phase 3 comment, analyze connection with each tree ---
-            if phase == 3:
-                for t_id in range(tree_counter):
-                    if self.analyze_connection_with_tree(context, comment, t_id):
-                        node_id_map[cid]['tree_id'] = t_id + 1
-                        break
-                    else:
-                        if t_id == len(tree_counter) - 1:
-                            node_id_map[cid]['tree_id'] = -1
+                    min_tree_id = min(connected_tree_ids)
+                    node_id_map[cid]['tree_id'] = min_tree_id
+                    # Merge all other connected trees into min_tree_id
+                    for merge_id in connected_tree_ids:
+                        if merge_id == min_tree_id:
+                            continue
+                        for n in nodes:
+                            if n.get('tree_id', -1) == merge_id:
+                                n['tree_id'] = min_tree_id
         graph['nodes'] = nodes
         graph['edges'] = edges
         print(graph)
