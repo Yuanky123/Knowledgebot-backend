@@ -50,20 +50,26 @@ class CommentAnalyzer:
         #     if new_comments[i].get('parent_comment_id') is not None:
         #         new_comments_phase[i] = 2
         # new_comments_phase[0] = 1
-        new_comments_phase = [1, 1, 1, 2, 2, 2, 2, 0, 3, 2]
+        new_comments_phase = [1, 1, 1, 2, 2, 2, 2, 0, 3, 2, 2, 1, 1, 2, 2]
         return new_comments_phase
 
     def analyze_connection(self, context, new_comment, past_comment):
         # randomly return true or false
         # return random.choice([True, False])
-        print(past_comment.get('body'))
+        # print(past_comment.get('body'))
         if new_comment.get('id') == 406 and past_comment.get('id') in [397, 399]:
+            return True
+        if new_comment.get('id') == 407 and past_comment.get('id') in [399]:
+            return True
+        if new_comment.get('id') in [410, 411] and past_comment.get('id') in [409]:
             return True
         return False
 
     def analyze_connection_with_tree(self, context, new_comment, tree_id):
         # randomly return true or false
-        return random.choice([True, False])
+        result = random.choice([True, False])
+        print(tree_id, result)
+        return result
     
     def add_to_graph(self, context, new_comments):
         graph = context['graph']
@@ -126,9 +132,10 @@ class CommentAnalyzer:
                     component_nodes[tree_counter] = component
                     tree_counter += 1
                 found_connection = False
+                # print(component_nodes)
                 for t_id, comp in component_nodes.items():
-                    if self.analyze_connection_with_tree(context, comment, t_id):
-                        node_id_map[cid]['tree_id'] = t_id
+                    if self.analyze_connection_with_tree(context, comment, t_id + 1):
+                        node_id_map[cid]['tree_id'] = t_id + 1
                         found_connection = True
                         break
                 if not found_connection:
@@ -174,7 +181,7 @@ class CommentAnalyzer:
                                 n['tree_id'] = min_tree_id
         graph['nodes'] = nodes
         graph['edges'] = edges
-        print(graph)
+        # print(graph)
         return graph
     
     def check_discussion_sufficiency(self, context, new_comments):
