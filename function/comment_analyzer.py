@@ -2,7 +2,16 @@
 # -*- coding: utf-8 -*-
 
 import random
+from openai import OpenAI
 from collections import defaultdict, deque
+from arg import OPENAI_API_KEY, OPENAI_MODEL
+import json
+
+# Configure OpenAI client
+client = OpenAI(
+    base_url='https://api.openai-proxy.org/v1',
+    api_key=OPENAI_API_KEY
+    )
 
 class CommentAnalyzer:
     """评论分析器"""
@@ -54,16 +63,212 @@ class CommentAnalyzer:
         return new_comments_phase
 
     def analyze_connection(self, context, new_comment, past_comment):
-        # randomly return true or false
-        # return random.choice([True, False])
-        # print(past_comment.get('body'))
-        if new_comment.get('id') == 406 and past_comment.get('id') in [397, 399]:
-            return True
-        if new_comment.get('id') == 407 and past_comment.get('id') in [399]:
-            return True
-        if new_comment.get('id') in [410, 411] and past_comment.get('id') in [409]:
-            return True
-        return False
+        """
+        Legacy function for single comment analysis - kept for backward compatibility
+        """
+        try:
+            # Prepare the prompt for ChatGPT
+            prompt = f"""
+            Analyze if the new comment directly replies to the past comment.
+            
+            Past Comment (Author: {past_comment.get('author', 'Unknown')}):
+            {past_comment.get('body', 'No content')}
+            
+            New Comment (Author: {new_comment.get('author', 'Unknown')}):
+            {new_comment.get('body', 'No content')}
+            
+            Determine if the new comment is a direct reply to the past comment. Consider:
+            1. Does the new comment explicitly reference or respond to points made in the past comment?
+            2. Does the new comment explicitly agree with, disagree with, or question the past comment WITH EXPLANATION?
+            3. Does the new comment mention or address the author of the past comment?
+
+            Note that 
+            - If either the new comment or past comment has no explanation or sufficient semantic information (for example, simply stating "I agree" or "I disagree" without any explanation), you should return false.
+            - If the past commenet is too general or broad, or it contains unclear terms that may cause confusion, you should return false.
+            - ALWAYS consider the semantic meaning of the new comment. The new comment may be expliciting expressing the author's opinion with a past comment, but this DOES NOT mean the new comment is replying to this specific past comment. You should consider the meaning of the new comment and the past comment. 
+            - DO NOT infer the underlying meaning of the new comment and try to associate it with the past comment. If the new comment is not explicitly referencing the past comment (such as explicitly mentioning terms described in the past comment), their connection is insufficient.
+            
+            Respond with a JSON object containing:
+            - "is_reply": true/false (whether the new comment directly replies to the past comment)
+            - "reason": "brief explanation of your decision"
+            
+            Examples:
+            New comment: Yeah I agree with you. Seems like a lot of graduate students are experiencing distress.
+            Past comment: Mental health is also an important aspect where we should deliver help to graduate students.
+            Response: {{
+                "is_reply": true,
+                "reason": "The new comment indicates that mental disorder is common among graduate students and agrees with the past comment that mental health is an important factor to consider when supporting graduate students. The new comment explicitly agrees with the past comment with explanation."
+            }}
+
+            New comment: Yeah that's a good point.
+            Past comment: Career center can help students find interns, which is also a useful source of support.
+            {{
+                "is_reply": false,
+                "reason": "The new comment indicates that the author agrees with a past comment, but no explanation is provided. The past comment discusses how career center can help students. Whether the new comment is agreeing with this specific past comment cannot be deteremined."
+            }} 
+
+            New comment: Yeah I think campus transportation can definitely help students to get around campus without stress.
+            Past comment: I think we should build connections among different communities on campus.
+            {{
+                "is_reply": false,
+                "reason": "The new comment agrees that campus transportation can help students travel within the campus. The past comment suggests building connections among different communities on campus. The term 'connection' in the past comment is not clearly defined, and it cannot be determined that it refers to physical connection and transportation, thus their relationship is unclear."
+            }}           
+            """
+            
+            # Call ChatGPT using the model from arg.py
+            response = client.chat.completions.create(
+                model=OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that analyzes comment relationships. Always respond with valid JSON format."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=150,
+                temperature=0.1
+            )
+            
+            # Extract the response
+            result_text = response.choices[0].message.content.strip()
+            print("Analyzing connection for comments...")
+            print("New comment: ", new_comment.get('body', 'N/A'))
+            print("Past comment: ", past_comment.get('body', 'N/A'))
+            
+            try:
+                result_json = json.loads(result_text)
+                is_reply = result_json.get('is_reply', False)
+                reason = result_json.get('reason', 'No reason provided')
+                print("Result: ", is_reply)
+                print("Reason: ", reason)
+                print('-' * 10)
+                return is_reply
+            except json.JSONDecodeError as e:
+                print(f"Error parsing JSON response: {e}")
+                # Fallback: try to extract yes/no from text
+                if 'true' in result_text.lower() or 'yes' in result_text.lower():
+                    return True
+                elif 'false' in result_text.lower() or 'no' in result_text.lower():
+                    return False
+                else:
+                    return False
+            
+        except Exception as e:
+            print(f"Error calling ChatGPT API: {e}")
+            # Fallback to the original hardcoded logic
+            if new_comment.get('id') == 406 and past_comment.get('id') in [397, 399]:
+                return True
+            if new_comment.get('id') == 407 and past_comment.get('id') in [399]:
+                return True
+            if new_comment.get('id') in [410, 411] and past_comment.get('id') in [409]:
+                return True
+            return False
+
+    def analyze_connection_batch(self, context, new_comment, candidate_comments):
+        """
+        Analyze connection between new comment and multiple candidate comments, return the best match
+        """
+        try:
+            # Prepare the prompt for ChatGPT
+            candidate_text = ""
+            for i, comment in enumerate(candidate_comments):
+                candidate_text += f"""
+            Candidate {i+1} (Author: {comment.get('author', 'Unknown')}):
+            {comment.get('body', 'No content')}
+            """
+
+            prompt = f"""
+            Analyze which candidate comment the new comment is most likely replying to.
+            
+            New Comment (Author: {new_comment.get('author', 'Unknown')}):
+            {new_comment.get('body', 'No content')}
+            
+            {candidate_text}
+            
+            Determine which candidate comment the new comment is most likely replying to. Consider:
+            1. Does the new comment explicitly reference or respond to points made in any candidate comment?
+            2. Does the new comment explicitly agree with, disagree with, or question any candidate comment WITH EXPLANATION?
+            3. Does the new comment mention or address the author of any candidate comment?
+
+            Note that 
+            - If either the new comment or candidate comment has no explanation or sufficient semantic information (for example, simply stating "I agree" or "I disagree" without any explanation), you should return false.
+            - If the candidate comment is too general or broad, or it contains unclear terms that may cause confusion, you should return false.
+            - ALWAYS consider the semantic meaning of the new comment. The new comment may be expliciting expressing the author's opinion with a candidate comment, but this DOES NOT mean the new comment is replying to this specific candidate comment. You should consider the meaning of the new comment and the candidate comment. 
+            - DO NOT infer the underlying meaning of the new comment and try to associate it with the candidate comment. If the new comment is not explicitly referencing the candidate comment (such as explicitly mentioning terms described in the candidate comment), their connection is insufficient.
+            
+            Respond with a JSON object containing:
+            - "best_match_index": 0-based index of the best matching candidate (or -1 if no good match)
+            - "connection_score": 0-10 score indicating strength of connection (0 = no connection, 10 = perfect match)
+            - "reason": "brief explanation of your decision"
+            
+            Examples:
+            New comment: Yeah I agree with you. Seems like a lot of graduate students are experiencing distress.
+            Candidate 1: Mental health is also an important aspect where we should deliver help to graduate students.
+            Candidate 2: Career center can help students find interns.
+            Response: {{
+                "best_match_index": 0,
+                "connection_score": 8,
+                "reason": "The new comment explicitly agrees with Candidate 1 about mental health being important for graduate students, with clear explanation about distress."
+            }}
+
+            New comment: Yeah that's a good point.
+            Candidate 1: Career center can help students find interns.
+            Candidate 2: Campus transportation is important.
+            Response: {{
+                "best_match_index": -1,
+                "connection_score": 0,
+                "reason": "The new comment indicates agreement but provides no explanation about which specific point it agrees with."
+            }}           
+            """
+            
+            # Call ChatGPT using the model from arg.py
+            response = client.chat.completions.create(
+                model=OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that analyzes comment relationships. Always respond with valid JSON format."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=200,
+                temperature=0.1
+            )
+            
+            # Extract the response
+            result_text = response.choices[0].message.content.strip()
+            print("Analyzing batch connection for comments...")
+            print("New comment: ", new_comment.get('body', 'N/A'))
+            print("Number of candidates: ", len(candidate_comments))
+            
+            try:
+                result_json = json.loads(result_text)
+                best_match_index = result_json.get('best_match_index', -1)
+                connection_score = result_json.get('connection_score', 0)
+                reason = result_json.get('reason', 'No reason provided')
+                print("Best match index: ", best_match_index)
+                print("Connection score: ", connection_score)
+                print("Reason: ", reason)
+                print('-' * 10)
+                
+                # Return the best matching comment if score is above threshold
+                if best_match_index >= 0 and connection_score >= 5:
+                    return candidate_comments[best_match_index]
+                else:
+                    return None
+                    
+            except json.JSONDecodeError as e:
+                print(f"Error parsing JSON response: {e}")
+                return None
+            
+        except Exception as e:
+            print(f"Error calling ChatGPT API: {e}")
+            return None
+
+    def extract_mentioned_user(self, comment_text):
+        """
+        Extract mentioned username from comment text (e.g., @username)
+        """
+        import re
+        # Look for @username pattern
+        match = re.search(r'@(\w+)', comment_text)
+        if match:
+            return match.group(1)
+        return None
 
     def analyze_connection_with_tree(self, context, new_comment, tree_id):
         # Extract all comments/nodes in the given tree_id from the graph
@@ -120,25 +325,63 @@ class CommentAnalyzer:
             if phase == 2:
                 connected_tree_ids = set()
                 parent_id = comment.get('parent_comment_id')
+                
+                # If comment has parent_comment_id, just add edge to parent and skip other analysis
                 if parent_id is not None and parent_id in node_id_map:
                     if not any(e for e in edges if e['source'] == parent_id and e['target'] == cid):
                         edges.append({'source': parent_id, 'target': cid})
                     parent_tree_id = node_id_map[parent_id].get('tree_id', None)
                     if parent_tree_id is not None and parent_tree_id >= 0:
                         connected_tree_ids.add(parent_tree_id)
-                for past_node in nodes:
-                    past_id = past_node['id']
-                    if past_id == cid or past_id == parent_id:
-                        continue
-                    if past_node.get('phase', 0) not in [1, 2]:
-                        continue
-                    past_comment = all_comments.get(past_id, past_node)
-                    if not any(e for e in edges if (e['source'] == past_id and e['target'] == cid) or (e['source'] == cid and e['target'] == past_id)):
-                        if self.analyze_connection(context, comment, past_comment):
-                            edges.append({'source': past_id, 'target': cid})
-                            past_tree_id = node_id_map[past_id].get('tree_id', None)
-                            if past_tree_id is not None and past_tree_id >= 0:
-                                connected_tree_ids.add(past_tree_id)
+                else:
+                    # No parent_comment_id, need to find best connection
+                    candidate_comments = []
+                    
+                    # Check if comment mentions a user (@username)
+                    mentioned_user = self.extract_mentioned_user(comment.get('body', ''))
+                    
+                    if mentioned_user:
+                        # Find most recent 3 comments by mentioned user
+                        user_comments = []
+                        for past_node in nodes:
+                            past_id = past_node['id']
+                            if past_id == cid:
+                                continue
+                            past_comment = all_comments.get(past_id, past_node)
+                            if past_comment.get('author') == mentioned_user:
+                                user_comments.append(past_comment)
+                        
+                        # Get most recent 3 comments by this user
+                        user_comments.sort(key=lambda x: x.get('id', 0), reverse=True)
+                        candidate_comments = user_comments[:3]
+                        print(f"Found {len(candidate_comments)} recent comments by mentioned user @{mentioned_user}")
+                    else:
+                        # Get most recent 5 comments
+                        recent_comments = []
+                        for past_node in nodes:
+                            past_id = past_node['id']
+                            if past_id == cid:
+                                continue
+                            if past_node.get('phase', 0) not in [1, 2]:
+                                continue
+                            past_comment = all_comments.get(past_id, past_node)
+                            recent_comments.append(past_comment)
+                        
+                        # Sort by ID (assuming higher ID = more recent) and get top 5
+                        recent_comments.sort(key=lambda x: x.get('id', 0), reverse=True)
+                        candidate_comments = recent_comments[:5]
+                        print(f"Analyzing against {len(candidate_comments)} most recent comments")
+                    
+                    # Use batch analysis to find best connection
+                    if candidate_comments:
+                        best_match = self.analyze_connection_batch(context, comment, candidate_comments)
+                        if best_match:
+                            best_match_id = best_match.get('id')
+                            if not any(e for e in edges if (e['source'] == best_match_id and e['target'] == cid) or (e['source'] == cid and e['target'] == best_match_id)):
+                                edges.append({'source': best_match_id, 'target': cid})
+                                best_match_tree_id = node_id_map[best_match_id].get('tree_id', None)
+                                if best_match_tree_id is not None and best_match_tree_id >= 0:
+                                    connected_tree_ids.add(best_match_tree_id)
                 # Assign tree id
                 if not connected_tree_ids:
                     max_tree_id += 1
