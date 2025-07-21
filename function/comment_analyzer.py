@@ -47,20 +47,17 @@ class CommentAnalyzer:
             }
         }
     
-    def analyze_phase(self, context, new_comments):
-        """判断当前评论的阶段"""
-        # 目前使用简单逻辑，未来可以集成大语言模型
-        # 使用大语言模型判断当前评论的阶段
-        # 输入：当前评论
-        # 输出：当前评论的阶段，并返回给前端
-        # new_comments_phase = self.llm_model.predict(new_comments)
-        # new_comments_phase = [random.choice([1, 2, 3])] * len(new_comments)
-        # for i in range(len(new_comments)):
-        #     if new_comments[i].get('parent_comment_id') is not None:
-        #         new_comments_phase[i] = 2
-        # new_comments_phase[0] = 1
-        new_comments_phase = [1, 1, 1, 2, 2, 2, 2, 0, 3, 2, 2, 1, 1, 2, 2, 3, 3, 2]
-        return new_comments_phase
+
+    def extract_mentioned_user(self, comment_text):
+        """
+        Extract mentioned username from comment text (e.g., @username)
+        """
+        import re
+        # Look for @username pattern
+        match = re.search(r'@(\w+)', comment_text)
+        if match:
+            return match.group(1)
+        return None
 
     def build_parent_chain(self, comment, id_to_comment, depth=0, max_depth=1):
         """
@@ -74,6 +71,22 @@ class CommentAnalyzer:
             parent_str = self.build_parent_chain(parent, id_to_comment, depth+1, max_depth)
             return f"\n    (In reply to: Author: {parent.get('author_name', 'Unknown')}, Body: {parent.get('body', 'No content')}{parent_str})"
         return ''
+
+    def analyze_phase(self, context, new_comments):
+        """判断当前评论的阶段"""
+        # 目前使用简单逻辑，未来可以集成大语言模型
+        # 使用大语言模型判断当前评论的阶段
+        # 输入：当前评论
+        # 输出：当前评论的阶段，并返回给前端
+        # new_comments_phase = self.llm_model.predict(new_comments)
+        # new_comments_phase = [random.choice([1, 2, 3])] * len(new_comments)
+        # for i in range(len(new_comments)):
+        #     if new_comments[i].get('parent_comment_id') is not None:
+        #         new_comments_phase[i] = 2
+        # new_comments_phase[0] = 1
+        new_comments_phase = [1, 1, 1, 2, 2, 2, 2, 0, 3, 2, 2, 1, 1, 2, 2, 3, 3, 3]
+        return new_comments_phase
+
 
     def analyze_connection(self, context, new_comment, past_comment):
         """
@@ -419,16 +432,6 @@ class CommentAnalyzer:
             print(f"Error calling ChatGPT API: {e}")
             return {t_id: (0, 'Error calling API.') for t_id in tree_ids}
 
-    def extract_mentioned_user(self, comment_text):
-        """
-        Extract mentioned username from comment text (e.g., @username)
-        """
-        import re
-        # Look for @username pattern
-        match = re.search(r'@(\w+)', comment_text)
-        if match:
-            return match.group(1)
-        return None
 
     def add_to_graph(self, context, new_comments):
         graph = context['graph']
