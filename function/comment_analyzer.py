@@ -302,7 +302,7 @@ class CommentAnalyzer:
             
             Determine if the new comment is related to the past discussion. Consider:
             1. Does the new comment reference any points made in the past discussion?
-            2. Does the new comment mention or address any author or topic discussed in the past discussion?
+            2. Does the new comment addresses any topic discussed in the past discussion?
             3. Is there a clear semantic or logical connection between the new comment and the past discussion?
             
             Respond with a JSON object containing:
