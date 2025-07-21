@@ -536,7 +536,7 @@ class CommentAnalyzer:
                             past_id = past_node['id']
                             if past_id == cid:
                                 continue
-                            if past_node.get('phase', 0) not in [1, 2, 3]:
+                            if past_node.get('phase', 0) not in [1, 2]:
                                 continue
                             past_comment = all_comments.get(past_id, past_node)
                             recent_comments.append(past_comment)
