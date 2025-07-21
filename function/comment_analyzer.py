@@ -389,7 +389,7 @@ class CommentAnalyzer:
                 if related_tree_ids:
                     node_id_map[cid]['tree_id'] = related_tree_ids
                 else:
-                    node_id_map[cid]['tree_id'] = [-1]
+                    node_id_map[cid]['tree_id'] = []
                 continue
             
             # PHASE 2: add edges, then update tree ids efficiently
