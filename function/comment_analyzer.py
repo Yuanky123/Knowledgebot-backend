@@ -352,6 +352,79 @@ class CommentAnalyzer:
             print(f"Error calling ChatGPT API: {e}")
             return False
 
+    def rate_connection_with_all_trees(self, context, new_comment, tree_ids):
+        """
+        Use ChatGPT to rate the connection (0-10) between new_comment and each tree in tree_ids.
+        Returns a dict: {tree_id: (score, reason)}
+        """
+        try:
+            nodes = context['graph']['nodes']
+            all_comments = context.get('comments', [])
+            id_to_comment = {c.get('id'): c for c in all_comments}
+            tree_contexts = []
+            for idx, t_id in enumerate(tree_ids):
+                tree_nodes = [n for n in nodes if n.get('tree_id', []).count(t_id) > 0]
+                tree_comments = []
+                for n in tree_nodes:
+                    c = id_to_comment.get(n['id'])
+                    if c:
+                        parent_chain = self.build_parent_chain(c, id_to_comment)
+                        tree_comments.append(f"Author: {c.get('author_name', 'Unknown')}: {parent_chain} {c.get('body', 'No content')}")
+                context_text = "\n".join(tree_comments)
+                tree_contexts.append(f"Tree {idx+1} (ID: {t_id}):\n{context_text}")
+            all_trees_text = "\n\n".join(tree_contexts)
+            prompt = f"""
+            For each tree below, rate the connection between the new comment and the tree (0-10, 0 = no connection, 10 = perfect match). Only consider explicit references or direct logical connections. Do not infer broader themes.
+            
+            Consider:
+            1. Does the new comment reference any points made in the past discussion?
+            2. Is there a clear semantic or logical connection between the new comment and the points made in the past discussion?
+
+            {all_trees_text}
+            
+            New Comment (Author: {new_comment.get('author_name', 'Unknown')}):
+            {self.build_parent_chain(new_comment, id_to_comment)}
+            {new_comment.get('body', 'No content')}
+            
+            Respond with a JSON object mapping tree index (starting from 1) to an object with 
+            "score": integer between 0 and 10, 0 = no connection, 10 = perfect match
+            "reason": summary of the new comment and the context, and brief explanation of your decision
+
+            Example:
+            {{
+                "1": {{"score": 8, "reason": "The new comment suggests that both physical and mental health issues are as important. This addresses the past discussion that graduate students' mental health should be supported. Part of the new comment is addressing the past discussion."}},
+                "2": {{"score": 0, "reason": "The new comment suggests that both physical and mental health issues are as important. The past discussion is about campus design. The new comment does not explicitly address campus design issues."}}
+            }}
+            """
+            print(prompt)
+            response = client.chat.completions.create(
+                model=OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that rates comment relationships. Always respond with valid JSON format."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=400,
+                temperature=0.1
+            )
+            result_text = response.choices[0].message.content.strip()
+            try:
+                import json
+                result_json = json.loads(result_text)
+                result = {}
+                for idx, t_id in enumerate(tree_ids):
+                    key = str(idx+1)
+                    entry = result_json.get(key, {})
+                    score = int(entry.get('score', 0))
+                    reason = entry.get('reason', 'No reason provided')
+                    result[t_id] = (score, reason)
+                return result
+            except Exception as e:
+                print(f"Error parsing JSON response: {e}")
+                return {t_id: (0, 'Error parsing response.') for t_id in tree_ids}
+        except Exception as e:
+            print(f"Error calling ChatGPT API: {e}")
+            return {t_id: (0, 'Error calling API.') for t_id in tree_ids}
+
     def extract_mentioned_user(self, comment_text):
         """
         Extract mentioned username from comment text (e.g., @username)
@@ -380,6 +453,7 @@ class CommentAnalyzer:
                 if tid >= 0:
                     existing_tree_ids.append(tid)
         max_tree_id = max(existing_tree_ids) if existing_tree_ids else 0
+        
         # Build a lookup for all comments (old and new) by id
         all_comments = {c['id']: c for c in (context.get('comments', []) + new_comments)}
         for comment in new_comments:
@@ -399,12 +473,18 @@ class CommentAnalyzer:
                 max_tree_id += 1
                 node_id_map[cid]['tree_id'] = [max_tree_id]
                 continue
-            # PHASE 3: check connection with each tree (no tree reconstruction)
+
+            # PHASE 3: rate connection with all trees and assign to those above threshold
             if phase == 3:
                 related_tree_ids = []
-                for t_id in range(1, max_tree_id + 1):
-                    if self.analyze_connection_with_tree(context, comment, t_id):
-                        related_tree_ids.append(t_id)
+                threshold = 5
+                tree_ids = range(1, max_tree_id + 1)
+                if tree_ids:
+                    scores = self.rate_connection_with_all_trees(context, comment, tree_ids)
+                    for t_id, (score, reason) in scores.items():
+                        print(f"Phase 3: Comment {cid} - Tree {t_id} score: {score}, reason: {reason}")
+                        if score >= threshold:
+                            related_tree_ids.append(t_id)
                 if related_tree_ids:
                     node_id_map[cid]['tree_id'] = related_tree_ids
                 else:
