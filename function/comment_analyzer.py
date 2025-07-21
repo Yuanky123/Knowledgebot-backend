@@ -71,10 +71,10 @@ class CommentAnalyzer:
             prompt = f"""
             Analyze if the new comment directly replies to the past comment.
             
-            Past Comment (Author: {past_comment.get('author', 'Unknown')}):
+            Past Comment (Author: {past_comment.get('author_name', 'Unknown')}):
             {past_comment.get('body', 'No content')}
             
-            New Comment (Author: {new_comment.get('author', 'Unknown')}):
+            New Comment (Author: {new_comment.get('author_name', 'Unknown')}):
             {new_comment.get('body', 'No content')}
             
             Determine if the new comment is a direct reply to the past comment. Consider:
@@ -170,14 +170,14 @@ class CommentAnalyzer:
             candidate_text = ""
             for i, comment in enumerate(candidate_comments):
                 candidate_text += f"""
-            Candidate {i+1} (Author: {comment.get('author', 'Unknown')}):
+            Candidate {i+1} (Author: {comment.get('author_name', 'Unknown')}):
             {comment.get('body', 'No content')}
             """
 
             prompt = f"""
             Analyze which candidate comment the new comment is most likely replying to.
             
-            New Comment (Author: {new_comment.get('author', 'Unknown')}):
+            New Comment (Author: {new_comment.get('author_name', 'Unknown')}):
             {new_comment.get('body', 'No content')}
             
             {candidate_text}
@@ -271,15 +271,78 @@ class CommentAnalyzer:
         return None
 
     def analyze_connection_with_tree(self, context, new_comment, tree_id):
-        # Extract all comments/nodes in the given tree_id from the graph
-        nodes = context['graph']['nodes']
-        tree_nodes = [n for n in nodes if n.get('tree_id') == tree_id]
-        # You can use tree_nodes for your analysis logic
-        # For demonstration, just print the ids and return random
-        print(f"Analyzing connection for comment {new_comment.get('id')} with tree {tree_id}, nodes: {[n['id'] for n in tree_nodes]}")
-        result = random.choice([True, False])
-        print(tree_id, result)
-        return result
+        try:
+            nodes = context['graph']['nodes']
+            tree_nodes = [n for n in nodes if n.get('tree_id', []).count(tree_id) > 0]
+            if not tree_nodes:
+                print(f"No nodes found for tree_id {tree_id}")
+                return False
+            
+            # Gather all comments in the tree as context (author, body, parent_comment_id only)
+            all_comments = context.get('comments', [])
+            id_to_comment = {c.get('id'): c for c in all_comments}
+            tree_comments = []
+            for n in tree_nodes:
+                c = id_to_comment.get(n['id'])
+                if c:
+                    parent_id = c.get('parent_comment_id')
+                    parent_str = ''
+                    if parent_id is not None and parent_id in id_to_comment:
+                        parent = id_to_comment[parent_id]
+                        parent_str = f"\n    (In reply to: Author: {parent.get('author_name', 'Unknown')}, Body: {parent.get('body', 'No content')})"
+                    tree_comments.append(f"Author: {c.get('author_name', 'Unknown')}, Body: {c.get('body', 'No content')}{parent_str}")
+            context_text = "\n".join(tree_comments)
+            
+            prompt = f"""
+            Analyze if the new comment is related to part of the past discussion below. The past discussion consists of the following comments:
+            {context_text}
+            
+            New Comment (Author: {new_comment.get('author_name', 'Unknown')}):
+            {new_comment.get('body', 'No content')}
+            
+            Determine if the new comment is related to the past discussion. Consider:
+            1. Does the new comment reference any points made in the past discussion?
+            2. Does the new comment mention or address any author or topic discussed in the past discussion?
+            3. Is there a clear semantic or logical connection between the new comment and the past discussion?
+            
+            Respond with a JSON object containing:
+            - "is_related": true/false (whether the new comment is related to the past discussion)
+            - "reason": "summary of the new comment and the context, and brief explanation of your decision"
+            
+            Example:
+            {{"is_related": true, "reason": "The new comment suggests that both physical and mental health issues are as important. This addresses the past discussion that graduate students' mental health should be supported. Part of the new comment is addressing the past discussion."}}
+            """
+            
+            response = client.chat.completions.create(
+                model=OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that analyzes comment relationships. Always respond with valid JSON format."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=200,
+                temperature=0.1
+            )
+            
+            result_text = response.choices[0].message.content.strip()
+            print("Analyzing connection with tree...")
+            print("New comment: ", new_comment.get('body', 'N/A'))
+            print("Tree context: ", context_text)
+            
+            try:
+                import json
+                result_json = json.loads(result_text)
+                is_related = result_json.get('is_related', False)
+                reason = result_json.get('reason', 'No reason provided')
+                print("Is related: ", is_related)
+                print("Reason: ", reason)
+                print('-' * 10)
+                return is_related
+            except Exception as e:
+                print(f"Error parsing JSON response: {e}")
+                return False
+        except Exception as e:
+            print(f"Error calling ChatGPT API: {e}")
+            return False
 
     def add_to_graph(self, context, new_comments):
         graph = context['graph']
@@ -287,38 +350,46 @@ class CommentAnalyzer:
         edges = graph.get('edges', [])
         node_id_map = {node['id']: node for node in nodes}
 
-        # 1. Drop all phase 0/4 comments
-        filtered_comments = [c for c in new_comments if c.get('message_phase', 0) not in [0, 4]]
 
         # Find current max tree id
-        existing_tree_ids = [node.get('tree_id', -1) for node in nodes if node.get('tree_id', -1) >= 0]
+        existing_tree_ids = []
+        for node in nodes:
+            tids = node.get('tree_id', [])
+            if isinstance(tids, int):
+                tids = [tids]
+            for tid in tids:
+                if tid >= 0:
+                    existing_tree_ids.append(tid)
         max_tree_id = max(existing_tree_ids) if existing_tree_ids else 0
         # Build a lookup for all comments (old and new) by id
         all_comments = {c['id']: c for c in (context.get('comments', []) + new_comments)}
-        for comment in filtered_comments:
+        for comment in new_comments:
             cid = comment['id']
             phase = comment.get('message_phase', 0)
+            context['comments'].append(comment)
+            if phase in [0, 4]:
+                continue
 
             # append new node
             if cid not in node_id_map and phase != 0 and phase != 4:
-                node = {'id': cid, 'phase': phase}
+                node = {'id': cid, 'phase': phase, 'tree_id': []}
                 nodes.append(node)
                 node_id_map[cid] = node
             # PHASE 1: assign new tree id, no edge, no tree update
             if phase == 1:
                 max_tree_id += 1
-                node_id_map[cid]['tree_id'] = max_tree_id
+                node_id_map[cid]['tree_id'] = [max_tree_id]
                 continue
             # PHASE 3: check connection with each tree (no tree reconstruction)
             if phase == 3:
-                found_connection = False
+                related_tree_ids = []
                 for t_id in range(1, max_tree_id + 1):
                     if self.analyze_connection_with_tree(context, comment, t_id):
-                        node_id_map[cid]['tree_id'] = t_id
-                        found_connection = True
-                        break
-                if not found_connection:
-                    node_id_map[cid]['tree_id'] = -1
+                        related_tree_ids.append(t_id)
+                if related_tree_ids:
+                    node_id_map[cid]['tree_id'] = related_tree_ids
+                else:
+                    node_id_map[cid]['tree_id'] = [-1]
                 continue
             
             # PHASE 2: add edges, then update tree ids efficiently
@@ -330,9 +401,12 @@ class CommentAnalyzer:
                 if parent_id is not None and parent_id in node_id_map:
                     if not any(e for e in edges if e['source'] == parent_id and e['target'] == cid):
                         edges.append({'source': parent_id, 'target': cid})
-                    parent_tree_id = node_id_map[parent_id].get('tree_id', None)
-                    if parent_tree_id is not None and parent_tree_id >= 0:
-                        connected_tree_ids.add(parent_tree_id)
+                    parent_tree_ids = node_id_map[parent_id].get('tree_id', [])
+                    if isinstance(parent_tree_ids, int):
+                        parent_tree_ids = [parent_tree_ids]
+                    for ptid in parent_tree_ids:
+                        if ptid >= 0:
+                            connected_tree_ids.add(ptid)
                 else:
                     # No parent_comment_id, need to find best connection
                     candidate_comments = []
@@ -348,7 +422,7 @@ class CommentAnalyzer:
                             if past_id == cid:
                                 continue
                             past_comment = all_comments.get(past_id, past_node)
-                            if past_comment.get('author') == mentioned_user:
+                            if past_comment.get('author_name') == mentioned_user:
                                 user_comments.append(past_comment)
                         
                         # Get most recent 3 comments by this user
@@ -379,26 +453,35 @@ class CommentAnalyzer:
                             best_match_id = best_match.get('id')
                             if not any(e for e in edges if (e['source'] == best_match_id and e['target'] == cid) or (e['source'] == cid and e['target'] == best_match_id)):
                                 edges.append({'source': best_match_id, 'target': cid})
-                                best_match_tree_id = node_id_map[best_match_id].get('tree_id', None)
-                                if best_match_tree_id is not None and best_match_tree_id >= 0:
-                                    connected_tree_ids.add(best_match_tree_id)
+                                best_match_tree_ids = node_id_map[best_match_id].get('tree_id', [])
+                                if isinstance(best_match_tree_ids, int):
+                                    best_match_tree_ids = [best_match_tree_ids]
+                                for btid in best_match_tree_ids:
+                                    if btid >= 0:
+                                        connected_tree_ids.add(btid)
                 # Assign tree id
                 if not connected_tree_ids:
                     max_tree_id += 1
-                    node_id_map[cid]['tree_id'] = max_tree_id
+                    node_id_map[cid]['tree_id'] = [max_tree_id]
                 else:
                     min_tree_id = min(connected_tree_ids)
-                    node_id_map[cid]['tree_id'] = min_tree_id
+                    node_id_map[cid]['tree_id'] = list(sorted(connected_tree_ids))
                     # Merge all other connected trees into min_tree_id
                     for merge_id in connected_tree_ids:
                         if merge_id == min_tree_id:
                             continue
                         for n in nodes:
-                            if n.get('tree_id', -1) == merge_id:
-                                n['tree_id'] = min_tree_id
+                            tids = n.get('tree_id', [])
+                            if isinstance(tids, int):
+                                tids = [tids]
+                            if merge_id in tids:
+                                # Remove merge_id and add min_tree_id if not present
+                                tids = [tid for tid in tids if tid != merge_id]
+                                if min_tree_id not in tids:
+                                    tids.append(min_tree_id)
+                                n['tree_id'] = list(sorted(set(tids)))
         graph['nodes'] = nodes
         graph['edges'] = edges
-        # print(graph)
         return graph
     
     def check_discussion_sufficiency(self, context, new_comments):

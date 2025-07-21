@@ -254,7 +254,7 @@ def on_timeout_callback(timeout_info=None):
         Current_context['graph'] = analyzer.add_to_graph(Current_context, new_added_comments)
         # print(Current_context['comments'])
         # print(new_added_comments)
-        Current_context['comments'] = Current_context['comments'] + new_added_comments
+        # Current_context['comments'] = Current_context['comments'] + new_added_comments
         # print(Current_context['comments'])
 
         # 步骤2：检查当前应该协助的阶段
