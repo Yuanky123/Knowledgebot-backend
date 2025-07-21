@@ -59,8 +59,21 @@ class CommentAnalyzer:
         #     if new_comments[i].get('parent_comment_id') is not None:
         #         new_comments_phase[i] = 2
         # new_comments_phase[0] = 1
-        new_comments_phase = [1, 1, 1, 2, 2, 2, 2, 0, 3, 2, 2, 1, 1, 2, 2]
+        new_comments_phase = [1, 1, 1, 2, 2, 2, 2, 0, 3, 2, 2, 1, 1, 2, 2, 3]
         return new_comments_phase
+
+    def build_parent_chain(self, comment, id_to_comment, depth=0, max_depth=1):
+        """
+        Recursively build parent chain string for a comment, up to max_depth.
+        """
+        if depth >= max_depth:
+            return ''
+        parent_id = comment.get('parent_comment_id')
+        if parent_id is not None and parent_id in id_to_comment:
+            parent = id_to_comment[parent_id]
+            parent_str = self.build_parent_chain(parent, id_to_comment, depth+1, max_depth)
+            return f"\n    (In reply to: Author: {parent.get('author_name', 'Unknown')}, Body: {parent.get('body', 'No content')}{parent_str})"
+        return ''
 
     def analyze_connection(self, context, new_comment, past_comment):
         """
@@ -166,11 +179,14 @@ class CommentAnalyzer:
         Analyze connection between new comment and multiple candidate comments, return the best match
         """
         try:
+            all_comments = context.get('comments', [])
+            id_to_comment = {c.get('id'): c for c in all_comments}
             # Prepare the prompt for ChatGPT
             candidate_text = ""
             for i, comment in enumerate(candidate_comments):
                 candidate_text += f"""
             Candidate {i+1} (Author: {comment.get('author_name', 'Unknown')}):
+            {self.build_parent_chain(comment, id_to_comment)}
             {comment.get('body', 'No content')}
             """
 
@@ -178,6 +194,7 @@ class CommentAnalyzer:
             Analyze which candidate comment the new comment is most likely replying to.
             
             New Comment (Author: {new_comment.get('author_name', 'Unknown')}):
+            {self.build_parent_chain(new_comment, id_to_comment)}
             {new_comment.get('body', 'No content')}
             
             {candidate_text}
@@ -217,7 +234,7 @@ class CommentAnalyzer:
                 "reason": "The new comment indicates agreement but provides no explanation about which specific point it agrees with."
             }}           
             """
-            
+            # print(prompt)
             # Call ChatGPT using the model from arg.py
             response = client.chat.completions.create(
                 model=OPENAI_MODEL,
@@ -270,6 +287,7 @@ class CommentAnalyzer:
             return match.group(1)
         return None
 
+
     def analyze_connection_with_tree(self, context, new_comment, tree_id):
         try:
             nodes = context['graph']['nodes']
@@ -285,12 +303,8 @@ class CommentAnalyzer:
             for n in tree_nodes:
                 c = id_to_comment.get(n['id'])
                 if c:
-                    parent_id = c.get('parent_comment_id')
-                    parent_str = ''
-                    if parent_id is not None and parent_id in id_to_comment:
-                        parent = id_to_comment[parent_id]
-                        parent_str = f"\n    (In reply to: Author: {parent.get('author_name', 'Unknown')}, Body: {parent.get('body', 'No content')})"
-                    tree_comments.append(f"Author: {c.get('author_name', 'Unknown')}, Body: {c.get('body', 'No content')}{parent_str}")
+                    parent_chain = self.build_parent_chain(c, id_to_comment)
+                    tree_comments.append(f"Author: {c.get('author_name', 'Unknown')}: {parent_chain} {c.get('body', 'No content')}")
             context_text = "\n".join(tree_comments)
             
             prompt = f"""
@@ -298,11 +312,12 @@ class CommentAnalyzer:
             {context_text}
             
             New Comment (Author: {new_comment.get('author_name', 'Unknown')}):
+            {self.build_parent_chain(new_comment, id_to_comment)}
             {new_comment.get('body', 'No content')}
             
             Determine if the new comment is related to the past discussion. Consider:
             1. Does the new comment reference any points made in the past discussion?
-            2. Does the new comment addresses any topic discussed in the past discussion?
+            2. Does the new comment mention or address any author or topic discussed in the past discussion?
             3. Is there a clear semantic or logical connection between the new comment and the past discussion?
             
             Respond with a JSON object containing:
@@ -312,7 +327,7 @@ class CommentAnalyzer:
             Example:
             {{"is_related": true, "reason": "The new comment suggests that both physical and mental health issues are as important. This addresses the past discussion that graduate students' mental health should be supported. Part of the new comment is addressing the past discussion."}}
             """
-            
+            # print(prompt)
             response = client.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=[
@@ -389,7 +404,7 @@ class CommentAnalyzer:
                 if related_tree_ids:
                     node_id_map[cid]['tree_id'] = related_tree_ids
                 else:
-                    node_id_map[cid]['tree_id'] = []
+                    node_id_map[cid]['tree_id'] = [-1]
                 continue
             
             # PHASE 2: add edges, then update tree ids efficiently
