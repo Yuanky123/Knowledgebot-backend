@@ -250,7 +250,7 @@ class CommentAnalyzer:
             result_text = response.choices[0].message.content.strip()
             print("Analyzing batch connection for comments...")
             print("New comment: ", new_comment.get('body', 'N/A'))
-            print("Number of candidates: ", len(candidate_comments))
+            print("Candidates: ", candidate_comments)
             
             try:
                 result_json = json.loads(result_text)
@@ -276,16 +276,6 @@ class CommentAnalyzer:
             print(f"Error calling ChatGPT API: {e}")
             return None
 
-    def extract_mentioned_user(self, comment_text):
-        """
-        Extract mentioned username from comment text (e.g., @username)
-        """
-        import re
-        # Look for @username pattern
-        match = re.search(r'@(\w+)', comment_text)
-        if match:
-            return match.group(1)
-        return None
 
 
     def analyze_connection_with_tree(self, context, new_comment, tree_id):
@@ -317,17 +307,20 @@ class CommentAnalyzer:
             
             Determine if the new comment is related to the past discussion. Consider:
             1. Does the new comment reference any points made in the past discussion?
-            2. Does the new comment mention or address any author or topic discussed in the past discussion?
-            3. Is there a clear semantic or logical connection between the new comment and the past discussion?
-            
+            2. Is there a clear semantic or logical connection between the new comment and the points made in the past discussion?
+
+            Note that:
+            - DO NOT consider the "broader theme" or "implicit meaning" of the new comment. Only consider whether the new comment EXPLICITLY mentions ideas or topics in the past discussion. 
+            - ONLY if the new comment explicitly mentions ideas in the past discussion, it is related to the past discussion. "Broader theme" or "Broader context" is not a valid reason to consider the new comment related to the past discussion.
+
             Respond with a JSON object containing:
             - "is_related": true/false (whether the new comment is related to the past discussion)
             - "reason": "summary of the new comment and the context, and brief explanation of your decision"
             
             Example:
             {{"is_related": true, "reason": "The new comment suggests that both physical and mental health issues are as important. This addresses the past discussion that graduate students' mental health should be supported. Part of the new comment is addressing the past discussion."}}
+            {{"is_related: false, "reason": The new comment suggests that campus planning should consider both university development and students' convenience, while the past discussion is about campus transportation design. While campus transportation is part of campus planning, the new comment does not explicitly address transportation issues." }}
             """
-            # print(prompt)
             response = client.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=[
@@ -358,6 +351,17 @@ class CommentAnalyzer:
         except Exception as e:
             print(f"Error calling ChatGPT API: {e}")
             return False
+
+    def extract_mentioned_user(self, comment_text):
+        """
+        Extract mentioned username from comment text (e.g., @username)
+        """
+        import re
+        # Look for @username pattern
+        match = re.search(r'@(\w+)', comment_text)
+        if match:
+            return match.group(1)
+        return None
 
     def add_to_graph(self, context, new_comments):
         graph = context['graph']
