@@ -374,11 +374,14 @@ class CommentAnalyzer:
                 tree_contexts.append(f"Tree {idx+1} (ID: {t_id}):\n{context_text}")
             all_trees_text = "\n\n".join(tree_contexts)
             prompt = f"""
-            For each tree below, rate the connection between the new comment and the tree (0-10, 0 = no connection, 10 = perfect match). Only consider explicit references or direct logical connections. Do not infer broader themes.
+            For each tree below, rate the connection between the new comment and the discussion tree representing part of the past discussion (0-10, 0 = no connection, 10 = perfect match).
             
             Consider:
-            1. Does the new comment reference any points made in the past discussion?
-            2. Is there a clear semantic or logical connection between the new comment and the points made in the past discussion?
+            1. Does the new comment reference any points made in the tree?
+            2. Is there a clear semantic or logical connection between the new comment and the points made in the tree?
+
+            Note that:
+            - The new comment does not have to be a continuation of the past discussion. It can be a combination of ideas proposed in the tree or new angles about the topic discussed in the tree.
 
             {all_trees_text}
             
@@ -396,7 +399,6 @@ class CommentAnalyzer:
                 "2": {{"score": 0, "reason": "The new comment suggests that both physical and mental health issues are as important. The past discussion is about campus design. The new comment does not explicitly address campus design issues."}}
             }}
             """
-            print(prompt)
             response = client.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=[
@@ -478,15 +480,22 @@ class CommentAnalyzer:
             if phase == 3:
                 related_tree_ids = []
                 threshold = 5
-                tree_ids = range(1, max_tree_id + 1)
-                if tree_ids:
-                    scores = self.rate_connection_with_all_trees(context, comment, tree_ids)
+                parent_id = comment.get('parent_comment_id')
+                parent_tree_ids = set()
+                if parent_id is not None and parent_id in node_id_map:
+                    parent_tree_ids = set(node_id_map[parent_id].get('tree_id', []))
+                # Exclude parent trees from GPT scoring
+                all_tree_ids = set(range(1, max_tree_id + 1))
+                if all_tree_ids:
+                    scores = self.rate_connection_with_all_trees(context, comment, all_tree_ids)
                     for t_id, (score, reason) in scores.items():
                         print(f"Phase 3: Comment {cid} - Tree {t_id} score: {score}, reason: {reason}")
-                        if score >= threshold:
+                        if score >= threshold or t_id in parent_tree_ids:
+                            if t_id in parent_tree_ids:
+                                print("Adjusted score to 10 due to parent connection.")
                             related_tree_ids.append(t_id)
                 if related_tree_ids:
-                    node_id_map[cid]['tree_id'] = related_tree_ids
+                    node_id_map[cid]['tree_id'] = sorted(set(related_tree_ids))
                 else:
                     node_id_map[cid]['tree_id'] = [-1]
                 continue
