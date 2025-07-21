@@ -59,7 +59,7 @@ class CommentAnalyzer:
         #     if new_comments[i].get('parent_comment_id') is not None:
         #         new_comments_phase[i] = 2
         # new_comments_phase[0] = 1
-        new_comments_phase = [1, 1, 1, 2, 2, 2, 2, 0, 3, 2, 2, 1, 1, 2, 2, 3]
+        new_comments_phase = [1, 1, 1, 2, 2, 2, 2, 0, 3, 2, 2, 1, 1, 2, 2, 3, 3, 2]
         return new_comments_phase
 
     def build_parent_chain(self, comment, id_to_comment, depth=0, max_depth=1):
@@ -165,14 +165,6 @@ class CommentAnalyzer:
             
         except Exception as e:
             print(f"Error calling ChatGPT API: {e}")
-            # Fallback to the original hardcoded logic
-            if new_comment.get('id') == 406 and past_comment.get('id') in [397, 399]:
-                return True
-            if new_comment.get('id') == 407 and past_comment.get('id') in [399]:
-                return True
-            if new_comment.get('id') in [410, 411] and past_comment.get('id') in [409]:
-                return True
-            return False
 
     def analyze_connection_batch(self, context, new_comment, candidate_comments):
         """
@@ -211,7 +203,7 @@ class CommentAnalyzer:
             - DO NOT infer the underlying meaning of the new comment and try to associate it with the candidate comment. If the new comment is not explicitly referencing the candidate comment (such as explicitly mentioning terms described in the candidate comment), their connection is insufficient.
             
             Respond with a JSON object containing:
-            - "best_match_index": 0-based index of the best matching candidate (or -1 if no good match)
+            - "best_match_index": 1-based index of the best matching candidate (or -1 if no good match)
             - "connection_score": 0-10 score indicating strength of connection (0 = no connection, 10 = perfect match)
             - "reason": "brief explanation of your decision"
             
@@ -220,7 +212,7 @@ class CommentAnalyzer:
             Candidate 1: Mental health is also an important aspect where we should deliver help to graduate students.
             Candidate 2: Career center can help students find interns.
             Response: {{
-                "best_match_index": 0,
+                "best_match_index": 1,
                 "connection_score": 8,
                 "reason": "The new comment explicitly agrees with Candidate 1 about mental health being important for graduate students, with clear explanation about distress."
             }}
@@ -250,11 +242,11 @@ class CommentAnalyzer:
             result_text = response.choices[0].message.content.strip()
             print("Analyzing batch connection for comments...")
             print("New comment: ", new_comment.get('body', 'N/A'))
-            print("Candidates: ", candidate_comments)
+            print("Candidates: ", candidate_text)
             
             try:
                 result_json = json.loads(result_text)
-                best_match_index = result_json.get('best_match_index', -1)
+                best_match_index = result_json.get('best_match_index', 0)
                 connection_score = result_json.get('connection_score', 0)
                 reason = result_json.get('reason', 'No reason provided')
                 print("Best match index: ", best_match_index)
@@ -263,7 +255,7 @@ class CommentAnalyzer:
                 print('-' * 10)
                 
                 # Return the best matching comment if score is above threshold
-                if best_match_index >= 0 and connection_score >= 5:
+                if best_match_index > 0 and connection_score >= 5:
                     return candidate_comments[best_match_index]
                 else:
                     return None
@@ -544,7 +536,7 @@ class CommentAnalyzer:
                             past_id = past_node['id']
                             if past_id == cid:
                                 continue
-                            if past_node.get('phase', 0) not in [1, 2]:
+                            if past_node.get('phase', 0) not in [1, 2, 3]:
                                 continue
                             past_comment = all_comments.get(past_id, past_node)
                             recent_comments.append(past_comment)
