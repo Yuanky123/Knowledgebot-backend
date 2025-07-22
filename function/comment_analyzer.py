@@ -3,6 +3,7 @@
 
 import random
 from collections import defaultdict, deque
+import arg
 
 class CommentAnalyzer:
     """评论分析器"""
@@ -17,23 +18,19 @@ class CommentAnalyzer:
         
         self.phase_criteria = {
             'initiation': {
-                'min_comments': 0,
-                'max_comments': 2,
+                'min_comments': 10,
                 'description': '多样化观点外化，建立讨论基础'
             },
             'exploration': {
-                'min_comments': 3,
-                'max_comments': 6,
+                'min_comments': 10,
                 'description': '深入探讨，展开多维度分析'
             },
             'negotiation': {
-                'min_comments': 7,
-                'max_comments': 12,
+                'min_coverage_rate': 0.5,
                 'description': '处理分歧，寻求共识'
             },
             'co_construction': {
-                'min_comments': 13,
-                'max_comments': float('inf'),
+                'min_comments': 10,
                 'description': '共同构建知识，整合观点'
             }
         }
@@ -166,4 +163,73 @@ class CommentAnalyzer:
         new_discussion_phase = current_phase
         new_discussion_patience = current_discussion_patience
         # new_is_sufficient = current_is_sufficient
+        if current_phase == 0:
+            new_discussion_patience = 0
+            new_discussion_phase = current_discussion_patience - len(new_comments)
+        elif current_phase == 1:
+            #判断阶段一的评论是不是足够多
+            phase_1_comments = 0
+            for comment in new_comments:
+                if comment.get('message_phase', 0) == 1:
+                    phase_1_comments += 1
+            for comment in context['comments']:
+                if comment.get('message_phase', 0) == 1:
+                    phase_1_comments += 1
+            if phase_1_comments >= self.phase_criteria['initiation']['min_comments']:
+                new_discussion_phase = 1
+                new_discussion_patience = arg.MAX_PATIENCE
+            else:
+                new_discussion_phase = 0
+                new_discussion_patience = current_discussion_patience - len(new_comments)
+        elif current_phase == 2:
+            #判断阶段二的评论是不是足够多
+            phase_2_comments = 0
+            for comment in new_comments:
+                if comment.get('message_phase', 0) == 2:
+                    phase_2_comments += 1
+            for comment in context['comments']:
+                if comment.get('message_phase', 0) == 2:
+                    phase_2_comments += 1
+            if phase_2_comments >= self.phase_criteria['exploration']['min_comments']:
+                new_discussion_phase = 2
+                new_discussion_patience = arg.MAX_PATIENCE
+                # function: extract block from context_structure & extract the negotiation points
+                # Negotiation_points_list = [[], [], ...]
+                pass
+            else:
+                new_discussion_phase = 0
+                new_discussion_patience = current_discussion_patience - len(new_comments)
+        elif current_phase == 3:
+            #判断阶段三的评论是否充分
+            new_phase_3_block = []
+            negotiation_points_list = [] #从原来的数据里提取
+            # extract the negotiation points from the new_comments 提取新的谈判点
+            new_negotiation_points = []
+            # 判断新的谈判点对原来的谈判点的覆盖情况
+            # function: 
+            coverage_rate = 0
+            if coverage_rate >= self.phase_criteria['negotiation']['min_coverage_rate']:
+                new_discussion_phase = 3
+                new_discussion_patience = arg.MAX_PATIENCE
+                # 根据新的谈判点，获取潜在的共同构建点 potential_co_construction_points = []
+                # function: 
+                pass
+            else:
+                new_discussion_phase = 2
+                new_discussion_patience = current_discussion_patience - len(new_comments)
+        elif current_phase == 4:
+            # 判断阶段四的评论是否充分
+            potential_co_construction_points = [] #从原来的数据里提取
+            # 根据新的谈判点，获取潜在的共同构建点 potential_co_construction_points = []
+            # function: 
+            new_co_construction_points = []
+            # 判断新的共同构建点对原来的共同构建点的覆盖情况
+            # function: 
+            coverage_rate = 0
+            if coverage_rate >= self.phase_criteria['co_construction']['min_coverage_rate']:
+                new_discussion_phase = 4
+                new_discussion_patience = arg.MAX_PATIENCE
+            else:
+                new_discussion_phase = 3
+                new_discussion_patience = current_discussion_patience - len(new_comments)
         return {'phase': new_discussion_phase, 'patience': new_discussion_patience}
