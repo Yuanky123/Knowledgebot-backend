@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from pyexpat import model
 import random
+from tkinter import N
 from openai import OpenAI
 from collections import defaultdict, deque
 from arg import OPENAI_API_KEY, OPENAI_MODEL
@@ -12,6 +14,11 @@ client = OpenAI(
     base_url='https://api.openai-proxy.org/v1',
     api_key=OPENAI_API_KEY
     )
+
+local_client = OpenAI(
+    base_url="http://0.0.0.0:8000/v1", # TODO: change the base_url
+    api_key="0"
+)
 
 class CommentAnalyzer:
     """评论分析器"""
@@ -84,7 +91,53 @@ class CommentAnalyzer:
         #     if new_comments[i].get('parent_comment_id') is not None:
         #         new_comments_phase[i] = 2
         # new_comments_phase[0] = 1
-        new_comments_phase = [1, 1, 1, 2, 2, 2, 2, 0, 3, 2, 2, 1, 1, 2, 2, 3, 3, 3]
+        # new_comments_phase = [1, 1, 1, 2, 2, 2, 2, 0, 3, 2, 2, 1, 1, 2, 2, 3, 3, 3]
+        
+        new_comments_phase = []
+        for i in range(len(new_comments)):
+            messages = [
+                {"role": "system", "content": "You are a professional data classifier. Your task is, in a online knowledge community setting, given a comment in this community, decide, whether the it is a knowledge comment or not, and if it is, which knowledge co-construction stage the comment belongs to. \n\n# Classification of the comments:\nThe classes are: \n0. Non-knowledge comment\n    Typical examples: Joking around or off-topic banter; only expressing yes/no/thanks without any further opinion (or insufficient expression of opinion, e.g., \"I have never considered this aspect before\"); purely expressing emotions (even in a calm manner)/complaints; personal attacks; pure sarcasm.\n1. Initiation: Multiple viewpoints are proposed in the comments, but there is no interaction yet.\n    Typical examples: Introduces an entirely new topic, question or fact.\n2. Exploration: Referencing others' viewpoints, adding examples or personal experiences to existing ideas, asking and answering related questions — overall, the content becomes more in-depth.\n    Typical examples: Supporting or refuting a previous viewpoint; deepening/adding to/restating previous ideas; providing theoretical support for earlier points; raising variations or complementary questions to earlier ones; probing the details or logic of earlier viewpoints; pointing out logical fallacies in earlier ideas.\n3. Negotiation: Integration of viewpoints, defining scopes, clarifying differences and common ground, moving toward structured negotiation, and attempting to reach mechanisms or solutions.\n    Typical examples: Defining the scope of multiple viewpoints; analyzing differences and similarities among them; integrating multiple earlier ideas into one comprehensive viewpoint; proposing higher-level mechanisms/solutions by synthesizing several perspectives.\n4. Integration: Establishing clear consensus, summarizing principles, applying knowledge, and reflecting on the co-constructed outcomes.\n    Typical examples: Generalizing a shared principle or insight from earlier ideas; Applying a synthesized understanding to a new problem or situation; Reflecting on the learning process or how the discussion has advanced collective understanding; Proposing directions for future discussion based on established consensus.\n(Classes 1-4 comprise the knowledge co-construction stages.)\n\n# Tips\n- You can use some linguistic cues to help you classify the comments, especially distinguishing between Initiation (class 1) and Exploration (class 2). Below are definitions and examples for each cue:\n    - Raising questions: Comments that include direct or rhetorical questions, often seeking clarification, elaboration, or challenging previous statements.\n        - Examples: \"Why cannot ...?\", \"Right?\", \"So ...?\"\n    - Refuting or supporting others' viewpoints: Comments that explicitly agree or disagree with previous statements, or reinforce/contradict earlier points.\n        - Examples: \"Yes.\", \"No, it's not ...\", \"Exactly, it is ...\", \"But ...\", \"Or ...\"\n    - Mentioning others: Comments that refer directly to another participant’s statement or perspective, often using phrases like \"what you said\" or \"do you know ...\". \n        - Note: Not all uses of \"you\" are mentions of others. Only when \"you\" refers to another participant’s comment or cannot be inferred as generic should it be considered a mention.\n        - Examples: \"I agree with what you said.\", \"Do you know if ...?\"\n    - Explaining previous comments: Comments that provide reasons, justifications, or clarifications for earlier statements, often using explanatory phrases.\n        - Examples: \"It's because ...\", \"The reason is ...\"\n    - Abrupt numbers or concepts: Comments that introduce numbers, statistics, or concepts that are contextually linked to previous discussion, rather than being standalone facts.\n        - Examples: \"500 is not a precise estimate\", \"The XXX model is ...\" (where \"XXX\" refers to something mentioned earlier)\n    - Unclear references: Comments that use pronouns or comparative terms whose meaning depends on previous context, making them semantically dependent on earlier comments.\n        - Examples: \"It's better than this.\", \"That is ...\", \"This approach ...\"\n    - Explicit quote mark: Comments that directly quote previous statements, often using symbols like \">\" or quotation marks to indicate a reference to earlier content.\n        - Examples: \"> ...\", '\"As mentioned above, ...\" '\n    - Comparison with only one side: Comments that make a comparison but only provide detail for one side, implying the other side is understood from previous context.\n        - Examples: \"This is better than that.\", \"Similarly, ...\"\n    - The linguistic cues above are not exhaustive, and a comment may contain more than one cue. The presence of any of these cues is often enough to classify a comment as Exploration (class 2). Always consider the whole comment and its context.\n    - In summary, if the comment seems to be semantically dependent on previous comments (e.g., refuting or supporting others' viewpoints), it is likely an Exploration comment (class 2). If it stands alone, stating an independent viewpoint, it is likely to be an Initiation comment (class 1).\n\n\nYou should only output the class number. For example, if the comment belongs to class 1, you should output 1."},
+                {"role": "user", "content": f"'comment': '{new_comments[i]}'"}
+            ]
+
+            model_prediction_phase = None
+            while model_prediction_phase is None:
+                response = client.chat.completions.create(
+                    messages=messages,
+                    model="mistralai/Mistral-7B-Instruct-v0.3"
+                )
+                try:
+                    model_prediction_phase = int(response.choices[0].message)
+                except:
+                    print(f"Error parsing LLM response, retrying...")
+
+            if model_prediction_phase == 0:
+                final_prediction_phase = 0
+            else: # final_prediction_phase = min(reply_phase, model_prediction_phase)
+                parent_comment_id = new_comments[i].get('parent_comment_id')
+                if parent_comment_id is None:
+                    final_prediction_phase = model_prediction_phase
+                else:
+                    # find: parent_comment_phase; first from new_comments, then from context.get('comments', [])
+                    parent_comment_phase = None
+                    for c in new_comments:
+                        if c.get('id') == parent_comment_id:
+                            parent_comment_phase = c.get('message_phase')
+                            break
+                    if parent_comment_phase is None:
+                        for c in context.get('comments', []):
+                            if c.get('id') == parent_comment_id:
+                                parent_comment_phase = c.get('message_phase')
+                                break
+                    if parent_comment_phase is None:
+                        parent_comment_phase = 0
+                    final_prediction_phase = min(model_prediction_phase, parent_comment_phase)
+                
+            new_comments[i]['message_phase'] = final_prediction_phase
+            new_comments_phase.append(final_prediction_phase)
+
+        assert len(new_comments_phase) == len(new_comments)
+
         return new_comments_phase
 
 
