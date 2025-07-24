@@ -176,10 +176,10 @@ class CommentAnalyzer:
                 if comment.get('message_phase', 0) == 1:
                     phase_1_comments += 1
             if phase_1_comments >= self.phase_criteria['initiation']['min_comments']:
-                new_discussion_phase = 1
+                new_discussion_phase = 2
                 new_discussion_patience = arg.MAX_PATIENCE
             else:
-                new_discussion_phase = 0
+                new_discussion_phase = 1
                 new_discussion_patience = current_discussion_patience - len(new_comments)
         elif current_phase == 2:
             #判断阶段二的评论是不是足够多
