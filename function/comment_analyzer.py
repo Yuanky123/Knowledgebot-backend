@@ -478,40 +478,77 @@ class CommentAnalyzer:
         except Exception as e:
             print(f"Error calling ChatGPT API: {e}")
             return {t_id: (0, 'Error calling API.') for t_id in tree_ids}
+    
+    def extract_argument_and_counterargument(self, context, tree_id):
+        """
+        Use GPT to extract the main argument and the main counterargument from a tree.
+        Returns a dict with 'argument' and 'counterargument' fields, each containing 'text' and 'explanation'.
+        """
+        context_text = self.formulate_tree(context, tree_id)
 
-    def analyze_counterargument_quality(self, context, tree_id):
+        prompt = f"""
+        You are an expert discussion analyst. Given the following discussion, identify:
+        1. The main argument (the central claim or position that most comments support or build upon).
+        2. The main counterargument (the most significant statement that challenges, refutes, or provides an alternative perspective to the main argument).
+        If there are multiple counterarguments, focus on the most representative one.
+
+        For each, provide the extracted text and a brief explanation of why you selected it.
+        Respond in the following JSON format:
+        If there is a counterargument:
+        {{
+            "argument": {{"text": "...", "explanation": "..."}},
+            "counterargument": {{"text": "...", "explanation": "..."}}
+        }}
+        If there is no counterargument:
+        {{
+            "argument": {{"text": "...", "explanation": "..."}},
+            "counterargument": {{"text": "", "explanation": "No counterargument found."}}
+        }}
+        Discussion:
+        {context_text}
+        """
+        response = client.chat.completions.create(
+            model=arg.OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that extracts arguments and counterarguments. Always respond with valid JSON format."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=400,
+            temperature=0.1
+        )
+        result_text = response.choices[0].message.content.strip()
+        try:
+            result_json = json.loads(result_text)
+        except Exception as e:
+            print(f"Error parsing GPT response for argument/counterargument extraction: {e}")
+            result_json = {
+                "argument": {"text": "", "explanation": "No argument found."},
+                "counterargument": {"text": "", "explanation": "No counterargument found."}
+            }
+        return result_json
+
+    def score_counterargument(self, context, tree_id, argument, counterargument):
         """
         For a given tree, find the counterargument(s) and use GPT to score their evidence, reasoning, and qualifier.
         Returns a dict with the scores and explanations for each dimension.
         """
-        # Get all comments in the tree
-        nodes = context['graph']['nodes']
-        tree_nodes = [n for n in nodes if tree_id in n.get('tree_id', [])]
-        if not tree_nodes:
-            print(f"No nodes found for tree_id {tree_id}")
-            return {
-                "evidence": {"score": 0, "explanation": "Counterargument not present"},
-                "reasoning": {"score": 0, "explanation": "Counterargument not present"},
-                "qualifier": {"score": 0, "explanation": "Counterargument not present"}
-            }
-        all_comments = context.get('comments', [])
-        id_to_comment = {c.get('id'): c for c in all_comments}
-        tree_comments = []
-        for n in tree_nodes:
-            c = id_to_comment.get(n['id'])
-            if c:
-                tree_comments.append(f"Author: {c.get('author_name', 'Unknown')}: {c.get('body', 'No content')}")
-        context_text = "\n".join(tree_comments)
+        context_text = self.formulate_tree(context, tree_id)
 
         prompt = f"""
-        You are an expert discussion analyst. Given the following discussion, identify the counterargument(s) (statements that challenge, refute, or provide an alternative perspective to the main claim or argument). For the counterargument(s), assess the following three dimensions:
+        You are an expert discussion analyst. Given the following discussion, the extracted main argument and counterargument. For the counterargument, assess the following three dimensions:
         - Evidence: Factual information, data, examples, or references that support the counterargument. Reply to other's comments is NOT evidence.
         - Reasoning: Logical connections, explanations, or justifications that link evidence to the counterargument or show how conclusions are drawn.
         - Qualifier: Words or phrases that indicate the strength, scope, or certainty of the counterargument (e.g., "usually", "sometimes", "might", "in most cases").
-        For each dimension, provide a score of 0 or 1 (0 = not present, 1 = present), and a brief explanation for your score. If there are multiple counterarguments, focus on the most representative one.
+        For each dimension, provide a score of 0 or 1 (0 = not present, 1 = present), and a brief explanation for your score. 
         
         Discussion:
         {context_text}
+
+        The extracted argument and counterargument are:
+        Argument:
+        {argument}
+        Counterargument:
+        {counterargument}
 
         Respond in the following JSON format:
         {{
@@ -541,7 +578,7 @@ class CommentAnalyzer:
             }
         return result_json
 
-    def score_tree(self, context, tree_id):
+    def score_tree(self, context, tree_id, argument):
         """
         Use GPT to score a tree on the presence of evidence, reasoning, qualifier, and counterargument.
         Store the result in context['graph']['tree_scores'][tree_id] as a dict.
@@ -550,23 +587,25 @@ class CommentAnalyzer:
         context_text = self.formulate_tree(context, tree_id)
 
         prompt = f"""
-        You are an expert discussion analyst. Given the following discussion, assess whether the discussion contains the following four dimensions. For each dimension, provide a score of 0 or 1 (0 = not present, 1 = present), and a brief explanation for your score.
+        You are an expert discussion analyst. Given the following discussion and the main claim or argument, assess whether the discussion contains the following 3 dimensions. For each dimension, provide a score of 0 or 1 (0 = not present, 1 = present), and a brief explanation for your score.
 
         Definitions:
         - Evidence: Factual information, data, examples, or references that support the main claim or argument in the discussion. Reply to other's comments is NOT evidence.
-        - Reasoning: Logical connections, explanations, or justifications that link evidence to claims or show how conclusions are drawn.
-        - Qualifier: Words or phrases that indicate the strength, scope, or certainty of a claim (e.g., "usually", "sometimes", "might", "in most cases").
-        - Counterargument: Statements that challenge, refute, or provide an alternative perspective to the main claim or argument in the discussion. 
+        - Reasoning: Logical connections, explanations, or justifications that link evidence to the main claim or argument, or show how conclusions of the main claim or argument are drawn.
+        - Qualifier: Words or phrases that indicate the strength, scope, or certainty of the main claim or argument (e.g., "usually", "sometimes", "might", "in most cases").
 
         Discussion:
         {context_text}
+
+        The extracted main argument is:
+        Main Argument:
+        {argument}
 
         Respond in the following JSON format:
         {{
             "evidence": {{"score": <0-1>, "explanation": "..."}},
             "reasoning": {{"score": <0-1>, "explanation": "..."}},
             "qualifier": {{"score": <0-1>, "explanation": "..."}},
-            "counterargument": {{"score": <0-1>, "explanation": "..."}}
         }}
         """
         response = client.chat.completions.create(
@@ -587,25 +626,8 @@ class CommentAnalyzer:
                 "evidence": {"score": -1, "explanation": "Error parsing response."},
                 "reasoning": {"score": -1, "explanation": "Error parsing response."},
                 "qualifier": {"score": -1, "explanation": "Error parsing response."},
-                "counterargument": {"score": -1, "explanation": "Error parsing response."}
             }
-        # Store in context['graph']['tree_scores']
-        if 'tree_scores' not in context['graph']:
-            context['graph']['tree_scores'] = {}
-        context['graph']['tree_scores'][tree_id] = result_json
 
-        # Counterargument analysis
-        if result_json.get('counterargument', {}).get('score', 0) == 1:
-            counter_scores = self.analyze_counterargument_quality(context, tree_id)
-        else:
-            counter_scores = {
-                "evidence": {"score": 0, "explanation": "Counterargument not present"}, 
-                "reasoning": {"score": 0, "explanation": "Counterargument not present"},
-                "qualifier": {"score": 0, "explanation": "Counterargument not present"}
-            }
-        result_json['counterargument_evidence'] = counter_scores['evidence']
-        result_json['counterargument_reasoning'] = counter_scores['reasoning']
-        result_json['counterargument_qualifier'] = counter_scores['qualifier']
         return result_json
 
     def add_to_graph(self, context, new_comments):
@@ -774,6 +796,7 @@ class CommentAnalyzer:
             elif current_phase == 2:
                 #判断阶段二每个tree是否都有讨论的各个部分
                 # For each tree, score and store the table
+
                 tree_ids = set()
                 for node in context['graph']['nodes']:
                     tids = node.get('tree_id', [])
@@ -782,18 +805,53 @@ class CommentAnalyzer:
                     for tid in tids:
                         if tid >= 0:
                             tree_ids.add(tid)
+                if 'arguments' not in context['graph']:
+                    context['graph']['arguments'] = {}
+                if 'tree_scores' not in context['graph']:
+                    context['graph']['tree_scores'] = {}
                 all_trees_full = True
                 for tid in tree_ids:
-                    score = self.score_tree(context, tid)
-                    if not context['graph']['tree_scores']:
-                        context['graph']['tree_scores'] = {}
+                    argument_analysis_result = self.extract_argument_and_counterargument(context, tid)
+                    context['graph']['arguments'][tid] = argument_analysis_result
+                    argument = argument_analysis_result['argument']['text']
+                    counterargument = argument_analysis_result['counterargument']['text']
+                    score = self.score_tree(context, tid, argument)
+                    if counterargument and counterargument != "":
+                        counter_scores = self.score_counterargument(context, tid, argument, counterargument)
+                        score['counterargument'] = {
+                            "score": 1,
+                            "explanation": "Counterargument present"
+                        }
+                        score['counterargument_evidence'] = counter_scores['evidence']
+                        score['counterargument_reasoning'] = counter_scores['reasoning']
+                        score['counterargument_qualifier'] = counter_scores['qualifier']
+                    else:
+                        score['counterargument'] = {
+                            "score": 0,
+                            "explanation": "No counterargument found"
+                        }
+                        score['counterargument_evidence'] = {
+                            "score": 0,
+                            "explanation": "No counterargument found"   
+                        }
+                        score['counterargument_reasoning'] = {
+                            "score": 0,
+                            "explanation": "No counterargument found"
+                        }
+                        score['counterargument_qualifier'] = {  
+                            "score": 0,
+                            "explanation": "No counterargument found"
+                        }
                     context['graph']['tree_scores'][tid] = score
                     # Check if all four scores are 1
                     if not (
                         score.get('evidence', {}).get('score', 0) == 1 and
                         score.get('reasoning', {}).get('score', 0) == 1 and
                         score.get('qualifier', {}).get('score', 0) == 1 and
-                        score.get('counterargument', {}).get('score', 0) == 1
+                        score.get('counterargument', {}).get('score', 0) == 1 and
+                        score.get('counterargument_evidence', {}).get('score', 0) == 1 and
+                        score.get('counterargument_reasoning', {}).get('score', 0) == 1 and
+                        score.get('counterargument_qualifier', {}).get('score', 0) == 1
                     ):
                         all_trees_full = False
                 if all_trees_full:
