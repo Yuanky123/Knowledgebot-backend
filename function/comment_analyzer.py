@@ -75,6 +75,26 @@ class CommentAnalyzer:
             return f"\n    (In reply to: Author: {parent.get('author_name', 'Unknown')}, Body: {parent.get('body', 'No content')}{parent_str})"
         return ''
 
+    def formulate_tree(self, context, tree_id):
+        nodes = context['graph']['nodes']
+        tree_nodes = [n for n in nodes if n.get('tree_id', []).count(tree_id) > 0]
+        if not tree_nodes:
+            print(f"No nodes found for tree_id {tree_id}")
+            return False
+
+        # Gather all comments in the tree as context (author, body, parent_comment_id only)
+        all_comments = context.get('comments', [])
+        id_to_comment = {c.get('id'): c for c in all_comments}
+        tree_comments = []
+        for n in tree_nodes:
+            c = id_to_comment.get(n['id'])
+            if c:
+                parent_chain = self.build_parent_chain(c, id_to_comment)
+                tree_comments.append(f"Author: {c.get('author_name', 'Unknown')}: {parent_chain} {c.get('body', 'No content')}")
+        context_text = "\n".join(tree_comments)
+        return context_text
+
+
     def analyze_phase(self, context, new_comments):
         """判断当前评论的阶段"""
         # 目前使用简单逻辑，未来可以集成大语言模型
@@ -334,22 +354,7 @@ class CommentAnalyzer:
 
     def analyze_connection_with_tree(self, context, new_comment, tree_id):
         try:
-            nodes = context['graph']['nodes']
-            tree_nodes = [n for n in nodes if n.get('tree_id', []).count(tree_id) > 0]
-            if not tree_nodes:
-                print(f"No nodes found for tree_id {tree_id}")
-                return False
-            
-            # Gather all comments in the tree as context (author, body, parent_comment_id only)
-            all_comments = context.get('comments', [])
-            id_to_comment = {c.get('id'): c for c in all_comments}
-            tree_comments = []
-            for n in tree_nodes:
-                c = id_to_comment.get(n['id'])
-                if c:
-                    parent_chain = self.build_parent_chain(c, id_to_comment)
-                    tree_comments.append(f"Author: {c.get('author_name', 'Unknown')}: {parent_chain} {c.get('body', 'No content')}")
-            context_text = "\n".join(tree_comments)
+            context_text = self.formulate_tree(context, tree_id)
             
             prompt = f"""
             Analyze if the new comment is related to part of the past discussion below. The past discussion consists of the following comments:
@@ -417,14 +422,7 @@ class CommentAnalyzer:
             id_to_comment = {c.get('id'): c for c in all_comments}
             tree_contexts = []
             for idx, t_id in enumerate(tree_ids):
-                tree_nodes = [n for n in nodes if n.get('tree_id', []).count(t_id) > 0]
-                tree_comments = []
-                for n in tree_nodes:
-                    c = id_to_comment.get(n['id'])
-                    if c:
-                        parent_chain = self.build_parent_chain(c, id_to_comment)
-                        tree_comments.append(f"Author: {c.get('author_name', 'Unknown')}: {parent_chain} {c.get('body', 'No content')}")
-                context_text = "\n".join(tree_comments)
+                context_text = self.formulate_tree(context, t_id)
                 tree_contexts.append(f"Tree {idx+1} (ID: {t_id}):\n{context_text}")
             all_trees_text = "\n\n".join(tree_contexts)
             prompt = f"""
@@ -506,7 +504,7 @@ class CommentAnalyzer:
             cid = comment['id']
             phase = comment.get('message_phase', 0)
             context['comments'].append(comment)
-            if phase in [0, 4]:
+            if phase in [0, 3, 4]:
                 continue
 
             # append new node
@@ -518,30 +516,6 @@ class CommentAnalyzer:
             if phase == 1:
                 max_tree_id += 1
                 node_id_map[cid]['tree_id'] = [max_tree_id]
-                continue
-
-            # PHASE 3: rate connection with all trees and assign to those above threshold
-            if phase == 3:
-                related_tree_ids = []
-                threshold = 5
-                parent_id = comment.get('parent_comment_id')
-                parent_tree_ids = set()
-                if parent_id is not None and parent_id in node_id_map:
-                    parent_tree_ids = set(node_id_map[parent_id].get('tree_id', []))
-                # Exclude parent trees from GPT scoring
-                all_tree_ids = set(range(1, max_tree_id + 1))
-                if all_tree_ids:
-                    scores = self.rate_connection_with_all_trees(context, comment, all_tree_ids)
-                    for t_id, (score, reason) in scores.items():
-                        print(f"Phase 3: Comment {cid} - Tree {t_id} score: {score}, reason: {reason}")
-                        if score >= threshold or t_id in parent_tree_ids:
-                            if t_id in parent_tree_ids:
-                                print("Adjusted score to 10 due to parent connection.")
-                            related_tree_ids.append(t_id)
-                if related_tree_ids:
-                    node_id_map[cid]['tree_id'] = sorted(set(related_tree_ids))
-                else:
-                    node_id_map[cid]['tree_id'] = [-1]
                 continue
             
             # PHASE 2: add edges, then update tree ids efficiently
@@ -663,7 +637,7 @@ class CommentAnalyzer:
                 new_discussion_phase = 0
                 new_discussion_patience = current_discussion_patience - len(new_comments)
         elif current_phase == 2:
-            #判断阶段二的评论是不是足够多
+            #判断阶段二每个tree是否都有讨论的各个部分
             phase_2_comments = 0
             for comment in new_comments:
                 if comment.get('message_phase', 0) == 2:
