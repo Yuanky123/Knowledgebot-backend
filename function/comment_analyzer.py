@@ -468,7 +468,7 @@ class CommentAnalyzer:
         # Each comment can only be in one conflict (including both intra and inter)
         # I suggest only query GPT once and let GPT rate all connections since it might hallucinate and give all 1 scores if you compare with only one conflict each time.
         # Return { "intra_tree": { 1: [ {comment_1}, {comment_2}, ... ] , 2: [ {comment_1}, {comment_2}, ... ] , ... } , "inter_tree": [ {comment_1}, {comment_2}, ... ] }
-        pass
+        return { "intra_tree": { 1: [], 2: [] } , "inter_tree": [] }
 
     def map_phase3_comments_to_inter_conflict_dimensions(self, inter_tree_conflicts):
         # TODO: Implement this function: compare each phase 3 comment against all inter tree dimensions. 
@@ -476,21 +476,21 @@ class CommentAnalyzer:
         # For each dimension of the conflict let GPT give a score of whether the comment is related ot it or not (0 or 1) with a reason.
         # I suggest only query GPT once and let GPT rate all connections since it might hallucinate and give all 1 scores if you compare with only one dimension each time.
         # Return { 1: [ {comment_1}, {comment_2}, ... ] , 2: [ {comment_1}, {comment_2}, ... ] , ... }
-        pass
+        return { 1: [], 2: [] }
     
     def determine_consensus_of_intra_conflicts(self, intra_tree_conflicts):
         # TODO: Implemenet this function: for each conflict get all phase 3 comments related to this conflict and rate the degree of consensus.
         # Params: intra_tree_conflicts: all intra tree conflicts. { 1: [ "argument": "...", "counterargument": "...", "comments": [ {comment_1}, {comment_2}, ... ] ] , 2: [ "argument": "...", "counterargument": "...", "comments": [ {comment_1}, {comment_2}, ... ] ] , ... }
         # Score from 0 to 2 (0 = no consensus, 1 = partial consensus, 2 = complete consensus) and let GPT give a reason for the scoring.
         # Return { 1: { 'score': 0, 'reason': '...' } , 2: { 'score': 1, 'reason': '...' } , ... }
-        pass
+        return { 1: { 'score': 0, 'reason': '123' }, 2: { 'score': 1, 'reason': '123' } }
 
     def determine_coverage_of_inter_conflicts(self, inter_tree_conflicts):
         # TODO: Implemenet this function: get all phase 3 comments related to this conflict and for each dimension determine whether the phase 3 comments cover it.
         # Params: inter_tree_conflicts: all inter tree conflicts. { 'dimensions': { 1: {'argument': '...', 'comments': [ {comment_1}, {comment_2}, ... ] } , 2: {'argument': '...', 'comments': [ {comment_1}, {comment_2}, ... ] } , ... }, 'comments': [ {comment_1}, {comment_2}, ... ] }
         # Score from 0 to 1 (0 = not covered, 1 = covered) and let GPT give a reason for the scoring.
         # Return { 1: { 'score': 0, 'reason': '...' } , 2: { 'score': 1, 'reason': '...' } , ... }
-        pass
+        return { 1: { 'score': 0, 'reason': '123' }, 2: { 'score': 1, 'reason': '123' } }
 
         
     def add_to_graph(self, context, new_comments):
@@ -741,7 +741,8 @@ class CommentAnalyzer:
 
                 inter_conflict_dimensions_mapping = self.map_phase3_comments_to_inter_conflict_dimensions(conflicts['inter_tree'])
                 for tid, comments in inter_conflict_dimensions_mapping.items():
-                    context['graph']['conflicts']['inter_tree'][tid]['comments'] = comments
+                    # print(context['graph']['conflicts']['inter_tree'][tid]['comments'])
+                    context['graph']['conflicts']['inter_tree']['dimensions'][tid]['comments'] = comments
 
 
                 intra_conflicts_consensus_rating = self.determine_consensus_of_intra_conflicts(intra_conflicts_mapping)
@@ -750,13 +751,13 @@ class CommentAnalyzer:
 
                 inter_conflicts_coverage_rating = self.determine_coverage_of_inter_conflicts(inter_conflicts_mapping)
                 for tid, rating in inter_conflicts_coverage_rating.items():
-                    context['graph']['conflicts']['inter_tree'][tid]['coverage_rating'] = rating
+                    context['graph']['conflicts']['inter_tree']['dimensions'][tid]['coverage_rating'] = rating
                 
                 # Advance phase only if all intra-tree conflicts have consensus score >= 1 and all inter-tree conflict dimensions have score == 1
                 all_ok = True
                 for tid in list_tree_ids(context):
                     # If any of the trees have unresolved conflicts, stay in phase 3
-                    if context['graph']['conflicts']['intra_tree'][tid]['consensus_rating']['score'] < 1 or context['graph']['conflicts']['inter_tree'][tid]['coverage_rating']['score'] < 1:
+                    if context['graph']['conflicts']['intra_tree'][tid]['consensus_rating']['score'] < 1 or context['graph']['conflicts']['inter_tree']['dimensions'][tid]['coverage_rating']['score'] < 1:
                         all_ok = False
                         break
                 if all_ok:
