@@ -8,6 +8,7 @@ from openai import OpenAI
 from collections import defaultdict, deque
 import arg
 import json
+import re
 
 # Configure OpenAI client
 client = OpenAI(
@@ -33,7 +34,7 @@ class CommentAnalyzer:
         
         self.phase_criteria = {
             'initiation': {
-                'min_comments': 1,
+                'min_comments': 10,
                 'description': '多样化观点外化，建立讨论基础'
             },
             'exploration': {
@@ -55,7 +56,6 @@ class CommentAnalyzer:
         """
         Extract mentioned username from comment text (e.g., @username)
         """
-        import re
         # Look for @username pattern
         match = re.search(r'@(\w+)', comment_text)
         if match:
@@ -95,6 +95,12 @@ class CommentAnalyzer:
         return context_text
 
 
+    def extract_json_from_markdown(self, markdown_text):
+        # Remove leading and trailing triple backticks and optional "json"
+        cleaned = re.sub(r'^```(?:json)?\s*', '', markdown_text.strip(), flags=re.IGNORECASE)
+        cleaned = re.sub(r'```$', '', cleaned.strip())
+        return cleaned.strip()
+
     def analyze_phase(self, context, new_comments):
         """判断当前评论的阶段"""
         # 目前使用简单逻辑，未来可以集成大语言模型
@@ -106,7 +112,6 @@ class CommentAnalyzer:
         # for i in range(len(new_comments)):
         #     if new_comments[i].get('parent_comment_id') is not None:
         #         new_comments_phase[i] = 2
-        # new_comments_phase[0] = 1
         new_comments_phase = [1, 1, 1, 2, 2, 2, 2, 0, 3, 2, 2, 1, 1, 2, 2, 3, 3, 3]
         
         # new_comments_phase = []
@@ -156,97 +161,6 @@ class CommentAnalyzer:
 
         return new_comments_phase
 
-
-    def analyze_connection(self, context, new_comment, past_comment):
-        """
-        Legacy function for single comment analysis - kept for backward compatibility
-        """
-        try:
-            # Prepare the prompt for ChatGPT
-            prompt = f"""
-            Analyze if the new comment directly replies to the past comment.
-            
-            Past Comment (Author: {past_comment.get('author_name', 'Unknown')}):
-            {past_comment.get('body', 'No content')}
-            
-            New Comment (Author: {new_comment.get('author_name', 'Unknown')}):
-            {new_comment.get('body', 'No content')}
-            
-            Determine if the new comment is a direct reply to the past comment. Consider:
-            1. Does the new comment explicitly reference or respond to points made in the past comment?
-            2. Does the new comment explicitly agree with, disagree with, or question the past comment WITH EXPLANATION?
-            3. Does the new comment mention or address the author of the past comment?
-
-            Note that 
-            - If either the new comment or past comment has no explanation or sufficient semantic information (for example, simply stating "I agree" or "I disagree" without any explanation), you should return false.
-            - If the past commenet is too general or broad, or it contains unclear terms that may cause confusion, you should return false.
-            - ALWAYS consider the semantic meaning of the new comment. The new comment may be expliciting expressing the author's opinion with a past comment, but this DOES NOT mean the new comment is replying to this specific past comment. You should consider the meaning of the new comment and the past comment. 
-            - DO NOT infer the underlying meaning of the new comment and try to associate it with the past comment. If the new comment is not explicitly referencing the past comment (such as explicitly mentioning terms described in the past comment), their connection is insufficient.
-            
-            Respond with a JSON object containing:
-            - "is_reply": true/false (whether the new comment directly replies to the past comment)
-            - "reason": "brief explanation of your decision"
-            
-            Examples:
-            New comment: Yeah I agree with you. Seems like a lot of graduate students are experiencing distress.
-            Past comment: Mental health is also an important aspect where we should deliver help to graduate students.
-            Response: {{
-                "is_reply": true,
-                "reason": "The new comment indicates that mental disorder is common among graduate students and agrees with the past comment that mental health is an important factor to consider when supporting graduate students. The new comment explicitly agrees with the past comment with explanation."
-            }}
-
-            New comment: Yeah that's a good point.
-            Past comment: Career center can help students find interns, which is also a useful source of support.
-            {{
-                "is_reply": false,
-                "reason": "The new comment indicates that the author agrees with a past comment, but no explanation is provided. The past comment discusses how career center can help students. Whether the new comment is agreeing with this specific past comment cannot be deteremined."
-            }} 
-
-            New comment: Yeah I think campus transportation can definitely help students to get around campus without stress.
-            Past comment: I think we should build connections among different communities on campus.
-            {{
-                "is_reply": false,
-                "reason": "The new comment agrees that campus transportation can help students travel within the campus. The past comment suggests building connections among different communities on campus. The term 'connection' in the past comment is not clearly defined, and it cannot be determined that it refers to physical connection and transportation, thus their relationship is unclear."
-            }}           
-            """
-            
-            # Call ChatGPT using the model from arg.py
-            response = client.chat.completions.create(
-                model=arg.OPENAI_MODEL,
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant that analyzes comment relationships. Always respond with valid JSON format."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=150,
-                temperature=0.1
-            )
-            
-            # Extract the response
-            result_text = response.choices[0].message.content.strip()
-            print("Analyzing connection for comments...")
-            print("New comment: ", new_comment.get('body', 'N/A'))
-            print("Past comment: ", past_comment.get('body', 'N/A'))
-            
-            try:
-                result_json = json.loads(result_text)
-                is_reply = result_json.get('is_reply', False)
-                reason = result_json.get('reason', 'No reason provided')
-                print("Result: ", is_reply)
-                print("Reason: ", reason)
-                print('-' * 10)
-                return is_reply
-            except json.JSONDecodeError as e:
-                print(f"Error parsing JSON response: {e}")
-                # Fallback: try to extract yes/no from text
-                if 'true' in result_text.lower() or 'yes' in result_text.lower():
-                    return True
-                elif 'false' in result_text.lower() or 'no' in result_text.lower():
-                    return False
-                else:
-                    return False
-            
-        except Exception as e:
-            print(f"Error calling ChatGPT API: {e}")
 
     def analyze_connection_batch(self, context, new_comment, candidate_comments):
         """
@@ -327,7 +241,7 @@ class CommentAnalyzer:
             print("Candidates: ", candidate_text)
             
             try:
-                result_json = json.loads(result_text)
+                result_json = json.loads(self.extract_json_from_markdown(result_text))
                 best_match_index = result_json.get('best_match_index', 0)
                 connection_score = result_json.get('connection_score', 0)
                 reason = result_json.get('reason', 'No reason provided')
@@ -350,9 +264,9 @@ class CommentAnalyzer:
             print(f"Error calling ChatGPT API: {e}")
             return None
 
+    
 
 
-    def analyze_connection_with_tree(self, context, new_comment, tree_id):
         try:
             context_text = self.formulate_tree(context, tree_id)
             
@@ -396,7 +310,6 @@ class CommentAnalyzer:
             print("Tree context: ", context_text)
             
             try:
-                import json
                 result_json = json.loads(result_text)
                 is_related = result_json.get('is_related', False)
                 reason = result_json.get('reason', 'No reason provided')
@@ -411,11 +324,16 @@ class CommentAnalyzer:
             print(f"Error calling ChatGPT API: {e}")
             return False
 
-    def rate_connection_with_all_trees(self, context, new_comment, tree_ids):
-        """
-        Use ChatGPT to rate the connection (0-10) between new_comment and each tree in tree_ids.
-        Returns a dict: {tree_id: (score, reason)}
-        """
+
+    def extract_integrative_comments(self, context):
+        # TODO: improve logic to extract integrative comment only. Now it is returning all comments in phase 3.
+        return [
+            {
+                "body": comment["body"],
+                "author_name": comment["author_name"]
+            } for comment in context.get('comments', []) if comment.get('message_phase', 0) == 3]
+
+    def rate_connection_with_all_trees(self, context, integrative_comments, tree_ids):
         try:
             nodes = context['graph']['nodes']
             all_comments = context.get('comments', [])
@@ -426,31 +344,44 @@ class CommentAnalyzer:
                 tree_contexts.append(f"Tree {idx+1} (ID: {t_id}):\n{context_text}")
             all_trees_text = "\n\n".join(tree_contexts)
             prompt = f"""
-            For each tree below, rate the connection between the new comment and the discussion tree representing part of the past discussion (0-10, 0 = no connection, 10 = perfect match).
+            There are several comments that integrates the past discussion.
+            For each discussion tree below that represents part of the discussion, determine if these comments match the tree (0 or 1, 0 = no match, 1 = match).
             
             Consider:
             1. Does the new comment reference any points made in the tree?
             2. Is there a clear semantic or logical connection between the new comment and the points made in the tree?
 
+            Comments:
+            """
+
+            
+            for comment in integrative_comments:
+                prompt += f"""
+                    Comment (Author: {comment.get('author_name', 'Unknown')}):
+                    {self.build_parent_chain(comment, id_to_comment)}
+                    {comment.get('body', 'No content')}
+                """
+                    
+
+            prompt += f"""
+
             Note that:
-            - The new comment does not have to be a continuation of the past discussion. It can be a combination of ideas proposed in the tree or new angles about the topic discussed in the tree.
+            - The new comment does not have to be a continuation of the past discussion. It can be a combination of ideas proposed in the tree or even a combination of ideas from this and other trees.
 
             {all_trees_text}
-            
-            New Comment (Author: {new_comment.get('author_name', 'Unknown')}):
-            {self.build_parent_chain(new_comment, id_to_comment)}
-            {new_comment.get('body', 'No content')}
+
             
             Respond with a JSON object mapping tree index (starting from 1) to an object with 
-            "score": integer between 0 and 10, 0 = no connection, 10 = perfect match
+            "score": 0 or 1, 0 = no match, 1 = match
             "reason": summary of the new comment and the context, and brief explanation of your decision
 
             Example:
             {{
-                "1": {{"score": 8, "reason": "The new comment suggests that both physical and mental health issues are as important. This addresses the past discussion that graduate students' mental health should be supported. Part of the new comment is addressing the past discussion."}},
-                "2": {{"score": 0, "reason": "The new comment suggests that both physical and mental health issues are as important. The past discussion is about campus design. The new comment does not explicitly address campus design issues."}}
+                "1": {{"score": 1, "reason": "The comments suggest that both physical and mental health issues are as important. This addresses the past discussion that graduate students' mental health should be supported. Part of the new comment is addressing the past discussion."}},
+                "2": {{"score": 0, "reason": "The comments suggest that both physical and mental health issues are as important. The past discussion is about campus design. The new comment does not explicitly address campus design issues."}}
             }}
             """
+
             response = client.chat.completions.create(
                 model=arg.OPENAI_MODEL,
                 messages=[
@@ -462,8 +393,7 @@ class CommentAnalyzer:
             )
             result_text = response.choices[0].message.content.strip()
             try:
-                import json
-                result_json = json.loads(result_text)
+                result_json = json.loads(self.extract_json_from_markdown(result_text))
                 result = {}
                 for idx, t_id in enumerate(tree_ids):
                     key = str(idx+1)
@@ -518,7 +448,7 @@ class CommentAnalyzer:
         )
         result_text = response.choices[0].message.content.strip()
         try:
-            result_json = json.loads(result_text)
+            result_json = json.loads(self.extract_json_from_markdown(result_text))
         except Exception as e:
             print(f"Error parsing GPT response for argument/counterargument extraction: {e}")
             result_json = {
@@ -568,7 +498,7 @@ class CommentAnalyzer:
         )
         result_text = response.choices[0].message.content.strip()
         try:
-            result_json = json.loads(result_text)
+            result_json = json.loads(self.extract_json_from_markdown(result_text))
         except Exception as e:
             print(f"Error parsing GPT response for counterargument quality: {e}")
             result_json = {
@@ -619,7 +549,7 @@ class CommentAnalyzer:
         )
         result_text = response.choices[0].message.content.strip()
         try:
-            result_json = json.loads(result_text)
+            result_json = json.loads(self.extract_json_from_markdown(result_text))
         except Exception as e:
             print(f"Error parsing GPT response for tree scoring: {e}")
             result_json = {
@@ -864,21 +794,31 @@ class CommentAnalyzer:
                     break
             elif current_phase == 3:
                 #判断阶段三的评论是否充分
-                new_phase_3_block = []
-                negotiation_points_list = [] #从原来的数据里提取
-                # extract the negotiation points from the new_comments 提取新的谈判点
-                new_negotiation_points = []
-                # 判断新的谈判点对原来的谈判点的覆盖情况
-                # function: 
-                coverage_rate = 0
-                if coverage_rate >= self.phase_criteria['negotiation']['min_coverage_rate']:
-                    new_discussion_phase = 3
+                integrative_comments = self.extract_integrative_comments(context)
+                print(integrative_comments)
+                if 'addressed_in_phase_3' not in context['graph']:
+                    context['graph']['addressed_in_phase_3'] = {}
+                tree_ids = set()
+                for node in context['graph']['nodes']:
+                    tids = node.get('tree_id', [])
+                    if isinstance(tids, int):
+                        tids = [tids]
+                    for tid in tids:
+                        if tid >= 0:
+                            tree_ids.add(tid)
+                tree_ids_list = list(tree_ids)
+                for tid in tree_ids_list:
+                    context['graph']['addressed_in_phase_3'][tid] = False
+                result = self.rate_connection_with_all_trees(context, integrative_comments, tree_ids_list)
+                for tid in tree_ids_list:
+                    if result[tid][0] == 1:
+                        context['graph']['addressed_in_phase_3'][tid] = True
+                # Advance phase only if all addressed_in_phase_3 are True
+                if all(context['graph']['addressed_in_phase_3'].get(tid, False) for tid in tree_ids_list):
+                    new_discussion_phase = 4
                     new_discussion_patience = arg.MAX_PATIENCE
-                    # 根据新的谈判点，获取潜在的共同构建点 potential_co_construction_points = []
-                    # function: 
-                    pass
                 else:
-                    new_discussion_phase = 2
+                    new_discussion_phase = 3
                     new_discussion_patience = current_discussion_patience - len(new_comments)
                     break
             elif current_phase == 4:
