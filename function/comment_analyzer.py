@@ -660,113 +660,118 @@ class CommentAnalyzer:
                     break
             elif current_phase == 2:
                 #判断阶段二每个tree是否都有讨论的各个部分
-                # For each tree, score and store the table
-                tree_ids = list_tree_ids(context)
-                if 'arguments' not in context['graph']:
-                    context['graph']['arguments'] = {}
-                if 'tree_scores' not in context['graph']:
-                    context['graph']['tree_scores'] = {}
-                all_trees_full = True
-                for tid in tree_ids:
-                    argument_analysis_result = self.extract_argument_and_counterargument(context, tid)
-                    context['graph']['arguments'][tid] = argument_analysis_result
-                    argument = argument_analysis_result['argument']['text']
-                    counterargument = argument_analysis_result['counterargument']['text']
-                    score = self.score_tree(context, tid, argument)
-                    if counterargument and counterargument != "":
-                        counter_scores = self.score_counterargument(context, tid, argument, counterargument)
-                        score['counterargument'] = {
-                            "score": 1,
-                            "explanation": "Counterargument present"
-                        }
-                        score['counterargument_evidence'] = counter_scores['evidence']
-                        score['counterargument_reasoning'] = counter_scores['reasoning']
-                        score['counterargument_qualifier'] = counter_scores['qualifier']
-                    else:
-                        score['counterargument'] = {
-                            "score": 0,
-                            "explanation": "No counterargument found"
-                        }
-                        score['counterargument_evidence'] = {
-                            "score": 0,
-                            "explanation": "No counterargument found"   
-                        }
-                        score['counterargument_reasoning'] = {
-                            "score": 0,
-                            "explanation": "No counterargument found"
-                        }
-                        score['counterargument_qualifier'] = {  
-                            "score": 0,
-                            "explanation": "No counterargument found"
-                        }
-                    context['graph']['tree_scores'][tid] = score
-                    # Either no counterargument or has all dimensions of counterargument
-                    if not (
-                        score.get('evidence', {}).get('score', 0) == 1 and
-                        score.get('reasoning', {}).get('score', 0) == 1 and
-                        score.get('qualifier', {}).get('score', 0) == 1 and (
-                            score.get('counterargument', {}).get('score', 0) == 0 or 
-                            (
-                                score.get('counterargument', {}).get('score', 0) == 1 and
-                                score.get('counterargument_evidence', {}).get('score', 0) == 1 and
-                                score.get('counterargument_reasoning', {}).get('score', 0) == 1 and
-                                score.get('counterargument_qualifier', {}).get('score', 0) == 1
+                try:
+                    # For each tree, score and store the table
+                    tree_ids = list_tree_ids(context)
+                    if 'arguments' not in context['graph']:
+                        context['graph']['arguments'] = {}
+                    if 'tree_scores' not in context['graph']:
+                        context['graph']['tree_scores'] = {}
+                    all_trees_full = True
+                    for tid in tree_ids:
+                        argument_analysis_result = self.extract_argument_and_counterargument(context, tid)
+                        context['graph']['arguments'][tid] = argument_analysis_result
+                        argument = argument_analysis_result['argument']['text']
+                        counterargument = argument_analysis_result['counterargument']['text']
+                        score = self.score_tree(context, tid, argument)
+                        if counterargument and counterargument != "":
+                            counter_scores = self.score_counterargument(context, tid, argument, counterargument)
+                            score['counterargument'] = {
+                                "score": 1,
+                                "explanation": "Counterargument present"
+                            }
+                            score['counterargument_evidence'] = counter_scores['evidence']
+                            score['counterargument_reasoning'] = counter_scores['reasoning']
+                            score['counterargument_qualifier'] = counter_scores['qualifier']
+                        else:
+                            score['counterargument'] = {
+                                "score": 0,
+                                "explanation": "No counterargument found"
+                            }
+                            score['counterargument_evidence'] = {
+                                "score": 0,
+                                "explanation": "No counterargument found"   
+                            }
+                            score['counterargument_reasoning'] = {
+                                "score": 0,
+                                "explanation": "No counterargument found"
+                            }
+                            score['counterargument_qualifier'] = {  
+                                "score": 0,
+                                "explanation": "No counterargument found"
+                            }
+                        context['graph']['tree_scores'][tid] = score
+                        # Either no counterargument or has all dimensions of counterargument
+                        if not (
+                            score.get('evidence', {}).get('score', 0) == 1 and
+                            score.get('reasoning', {}).get('score', 0) == 1 and
+                            score.get('qualifier', {}).get('score', 0) == 1 and (
+                                score.get('counterargument', {}).get('score', 0) == 0 or 
+                                (
+                                    score.get('counterargument', {}).get('score', 0) == 1 and
+                                    score.get('counterargument_evidence', {}).get('score', 0) == 1 and
+                                    score.get('counterargument_reasoning', {}).get('score', 0) == 1 and
+                                    score.get('counterargument_qualifier', {}).get('score', 0) == 1
+                                )
                             )
-                        )
-                    ):
-                        all_trees_full = False
-                if all_trees_full:
-                    new_discussion_phase = 3
-                    new_discussion_patience = arg.MAX_PATIENCE
-                else:
-                    new_discussion_phase = 2
-                    # break (just stay in phase 2)
-                    new_discussion_patience = current_discussion_patience - len(new_comments)
-                    break
+                        ):
+                            all_trees_full = False
+                    if all_trees_full:
+                        new_discussion_phase = 3
+                        new_discussion_patience = arg.MAX_PATIENCE
+                    else:
+                        new_discussion_phase = 2
+                        # break (just stay in phase 2)
+                        new_discussion_patience = current_discussion_patience - len(new_comments)
+                        break
+                except Exception as e:
+                    print("Error during sufficiency check of phase 2:", e)
             elif current_phase == 3:
                 #判断阶段三的评论是否充分
-                conflicts = self.list_conflicts(context)
-                context['graph']['conflicts'] = conflicts
+                try:
+                    conflicts = self.list_conflicts(context)
+                    context['graph']['conflicts'] = conflicts
 
-                phase3_comments = self.extract_phase3_comments(context)
-
-                print(conflicts)
-
-                conflicts_mapping = self.map_phase3_comments_to_conflicts(phase3_comments, conflicts['intra_tree'], conflicts['inter_tree'])
-                intra_conflicts_mapping = conflicts_mapping['intra_tree']
-                inter_conflicts_mapping = conflicts_mapping['inter_tree']
-                for tid, comments in intra_conflicts_mapping.items():
-                    context['graph']['conflicts']['intra_tree'][tid]['comments'] = comments
-                context['graph']['conflicts']['inter_tree']['comments'] = inter_conflicts_mapping
-
-                inter_conflict_dimensions_mapping = self.map_phase3_comments_to_inter_conflict_dimensions(conflicts['inter_tree'])
-                for tid, comments in inter_conflict_dimensions_mapping.items():
-                    # print(context['graph']['conflicts']['inter_tree'][tid]['comments'])
-                    context['graph']['conflicts']['inter_tree']['dimensions'][tid]['comments'] = comments
+                    phase3_comments = self.extract_phase3_comments(context)
 
 
-                intra_conflicts_consensus_rating = self.determine_consensus_of_intra_conflicts(intra_conflicts_mapping)
-                for tid, rating in intra_conflicts_consensus_rating.items():
-                    context['graph']['conflicts']['intra_tree'][tid]['consensus_rating'] = rating
+                    conflicts_mapping = self.map_phase3_comments_to_conflicts(phase3_comments, conflicts['intra_tree'], conflicts['inter_tree'])
+                    intra_conflicts_mapping = conflicts_mapping['intra_tree']
+                    inter_conflicts_mapping = conflicts_mapping['inter_tree']
+                    for tid, comments in intra_conflicts_mapping.items():
+                        context['graph']['conflicts']['intra_tree'][tid]['comments'] = comments
+                    context['graph']['conflicts']['inter_tree']['comments'] = inter_conflicts_mapping
 
-                inter_conflicts_coverage_rating = self.determine_coverage_of_inter_conflicts(inter_conflicts_mapping)
-                for tid, rating in inter_conflicts_coverage_rating.items():
-                    context['graph']['conflicts']['inter_tree']['dimensions'][tid]['coverage_rating'] = rating
-                
-                # Advance phase only if all intra-tree conflicts have consensus score >= 1 and all inter-tree conflict dimensions have score == 1
-                all_ok = True
-                for tid in list_tree_ids(context):
-                    # If any of the trees have unresolved conflicts, stay in phase 3
-                    if context['graph']['conflicts']['intra_tree'][tid]['consensus_rating']['score'] < 1 or context['graph']['conflicts']['inter_tree']['dimensions'][tid]['coverage_rating']['score'] < 1:
-                        all_ok = False
+                    inter_conflict_dimensions_mapping = self.map_phase3_comments_to_inter_conflict_dimensions(conflicts['inter_tree'])
+                    for tid, comments in inter_conflict_dimensions_mapping.items():
+                        # print(context['graph']['conflicts']['inter_tree'][tid]['comments'])
+                        context['graph']['conflicts']['inter_tree']['dimensions'][tid]['comments'] = comments
+
+
+                    intra_conflicts_consensus_rating = self.determine_consensus_of_intra_conflicts(intra_conflicts_mapping)
+                    for tid, rating in intra_conflicts_consensus_rating.items():
+                        context['graph']['conflicts']['intra_tree'][tid]['consensus_rating'] = rating
+
+                    inter_conflicts_coverage_rating = self.determine_coverage_of_inter_conflicts(inter_conflicts_mapping)
+                    for tid, rating in inter_conflicts_coverage_rating.items():
+                        context['graph']['conflicts']['inter_tree']['dimensions'][tid]['coverage_rating'] = rating
+                    
+                    # Advance phase only if all intra-tree conflicts have consensus score >= 1 and all inter-tree conflict dimensions have score == 1
+                    all_ok = True
+                    for tid in list_tree_ids(context):
+                        # If any of the trees have unresolved conflicts, stay in phase 3
+                        if context['graph']['conflicts']['intra_tree'][tid]['consensus_rating']['score'] < 1 or context['graph']['conflicts']['inter_tree']['dimensions'][tid]['coverage_rating']['score'] < 1:
+                            all_ok = False
+                            break
+                    if all_ok:
+                        new_discussion_phase = 4
+                        new_discussion_patience = arg.MAX_PATIENCE
+                    else:
+                        new_discussion_phase = 3
+                        new_discussion_patience = current_discussion_patience - len(new_comments)
                         break
-                if all_ok:
-                    new_discussion_phase = 4
-                    new_discussion_patience = arg.MAX_PATIENCE
-                else:
-                    new_discussion_phase = 3
-                    new_discussion_patience = current_discussion_patience - len(new_comments)
-                    break
+                except Exception as e:
+                    print('Error during sufficiency check of phase 3:', e)
             elif current_phase == 4:
                 # 判断阶段四的评论是否充分
                 potential_co_construction_points = [] #从原来的数据里提取
