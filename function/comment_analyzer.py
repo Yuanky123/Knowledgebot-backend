@@ -9,6 +9,7 @@ from collections import defaultdict, deque
 import arg
 import json
 import re
+from .utils import build_parent_chain, extract_json_from_markdown, extract_mentioned_user, formulate_tree
 
 # Configure OpenAI client
 client = OpenAI(
@@ -52,54 +53,6 @@ class CommentAnalyzer:
         }
     
 
-    def extract_mentioned_user(self, comment_text):
-        """
-        Extract mentioned username from comment text (e.g., @username)
-        """
-        # Look for @username pattern
-        match = re.search(r'@(\w+)', comment_text)
-        if match:
-            return match.group(1)
-        return None
-
-    def build_parent_chain(self, comment, id_to_comment, depth=0, max_depth=1):
-        """
-        Recursively build parent chain string for a comment, up to max_depth.
-        """
-        if depth >= max_depth:
-            return ''
-        parent_id = comment.get('parent_comment_id')
-        if parent_id is not None and parent_id in id_to_comment:
-            parent = id_to_comment[parent_id]
-            parent_str = self.build_parent_chain(parent, id_to_comment, depth+1, max_depth)
-            return f"\n    (In reply to: Author: {parent.get('author_name', 'Unknown')}, Body: {parent.get('body', 'No content')}{parent_str})"
-        return ''
-
-    def formulate_tree(self, context, tree_id):
-        nodes = context['graph']['nodes']
-        tree_nodes = [n for n in nodes if n.get('tree_id', []).count(tree_id) > 0]
-        if not tree_nodes:
-            print(f"No nodes found for tree_id {tree_id}")
-            return False
-
-        # Gather all comments in the tree as context (author, body, parent_comment_id only)
-        all_comments = context.get('comments', [])
-        id_to_comment = {c.get('id'): c for c in all_comments}
-        tree_comments = []
-        for n in tree_nodes:
-            c = id_to_comment.get(n['id'])
-            if c:
-                parent_chain = self.build_parent_chain(c, id_to_comment)
-                tree_comments.append(f"Author: {c.get('author_name', 'Unknown')}: {parent_chain} {c.get('body', 'No content')}")
-        context_text = "\n".join(tree_comments)
-        return context_text
-
-
-    def extract_json_from_markdown(self, markdown_text):
-        # Remove leading and trailing triple backticks and optional "json"
-        cleaned = re.sub(r'^```(?:json)?\s*', '', markdown_text.strip(), flags=re.IGNORECASE)
-        cleaned = re.sub(r'```$', '', cleaned.strip())
-        return cleaned.strip()
 
     def analyze_phase(self, context, new_comments):
         """判断当前评论的阶段"""
@@ -174,7 +127,7 @@ class CommentAnalyzer:
             for i, comment in enumerate(candidate_comments):
                 candidate_text += f"""
             Candidate {i+1} (Author: {comment.get('author_name', 'Unknown')}):
-            {self.build_parent_chain(comment, id_to_comment)}
+            {build_parent_chain(comment, id_to_comment)}
             {comment.get('body', 'No content')}
             """
 
@@ -182,7 +135,7 @@ class CommentAnalyzer:
             Analyze which candidate comment the new comment is most likely replying to.
             
             New Comment (Author: {new_comment.get('author_name', 'Unknown')}):
-            {self.build_parent_chain(new_comment, id_to_comment)}
+            {build_parent_chain(new_comment, id_to_comment)}
             {new_comment.get('body', 'No content')}
             
             {candidate_text}
@@ -241,7 +194,7 @@ class CommentAnalyzer:
             print("Candidates: ", candidate_text)
             
             try:
-                result_json = json.loads(self.extract_json_from_markdown(result_text))
+                result_json = json.loads(extract_json_from_markdown(result_text))
                 best_match_index = result_json.get('best_match_index', 0)
                 connection_score = result_json.get('connection_score', 0)
                 reason = result_json.get('reason', 'No reason provided')
@@ -268,14 +221,14 @@ class CommentAnalyzer:
 
 
         try:
-            context_text = self.formulate_tree(context, tree_id)
+            context_text = formulate_tree(context, tree_id)
             
             prompt = f"""
             Analyze if the new comment is related to part of the past discussion below. The past discussion consists of the following comments:
             {context_text}
             
             New Comment (Author: {new_comment.get('author_name', 'Unknown')}):
-            {self.build_parent_chain(new_comment, id_to_comment)}
+            {build_parent_chain(new_comment, id_to_comment)}
             {new_comment.get('body', 'No content')}
             
             Determine if the new comment is related to the past discussion. Consider:
@@ -340,7 +293,7 @@ class CommentAnalyzer:
             id_to_comment = {c.get('id'): c for c in all_comments}
             tree_contexts = []
             for idx, t_id in enumerate(tree_ids):
-                context_text = self.formulate_tree(context, t_id)
+                context_text = formulate_tree(context, t_id)
                 tree_contexts.append(f"Tree {idx+1} (ID: {t_id}):\n{context_text}")
             all_trees_text = "\n\n".join(tree_contexts)
             prompt = f"""
@@ -358,7 +311,7 @@ class CommentAnalyzer:
             for comment in integrative_comments:
                 prompt += f"""
                     Comment (Author: {comment.get('author_name', 'Unknown')}):
-                    {self.build_parent_chain(comment, id_to_comment)}
+                    {build_parent_chain(comment, id_to_comment)}
                     {comment.get('body', 'No content')}
                 """
                     
@@ -393,7 +346,7 @@ class CommentAnalyzer:
             )
             result_text = response.choices[0].message.content.strip()
             try:
-                result_json = json.loads(self.extract_json_from_markdown(result_text))
+                result_json = json.loads(extract_json_from_markdown(result_text))
                 result = {}
                 for idx, t_id in enumerate(tree_ids):
                     key = str(idx+1)
@@ -414,7 +367,7 @@ class CommentAnalyzer:
         Use GPT to extract the main argument and the main counterargument from a tree.
         Returns a dict with 'argument' and 'counterargument' fields, each containing 'text' and 'explanation'.
         """
-        context_text = self.formulate_tree(context, tree_id)
+        context_text = formulate_tree(context, tree_id)
 
         prompt = f"""
         You are an expert discussion analyst. Given the following discussion, identify:
@@ -448,7 +401,7 @@ class CommentAnalyzer:
         )
         result_text = response.choices[0].message.content.strip()
         try:
-            result_json = json.loads(self.extract_json_from_markdown(result_text))
+            result_json = json.loads(extract_json_from_markdown(result_text))
         except Exception as e:
             print(f"Error parsing GPT response for argument/counterargument extraction: {e}")
             result_json = {
@@ -462,7 +415,7 @@ class CommentAnalyzer:
         For a given tree, find the counterargument(s) and use GPT to score their evidence, reasoning, and qualifier.
         Returns a dict with the scores and explanations for each dimension.
         """
-        context_text = self.formulate_tree(context, tree_id)
+        context_text = formulate_tree(context, tree_id)
 
         prompt = f"""
         You are an expert discussion analyst. Given the following discussion, the extracted main argument and counterargument. For the counterargument, assess the following three dimensions:
@@ -498,7 +451,7 @@ class CommentAnalyzer:
         )
         result_text = response.choices[0].message.content.strip()
         try:
-            result_json = json.loads(self.extract_json_from_markdown(result_text))
+            result_json = json.loads(extract_json_from_markdown(result_text))
         except Exception as e:
             print(f"Error parsing GPT response for counterargument quality: {e}")
             result_json = {
@@ -514,7 +467,7 @@ class CommentAnalyzer:
         Store the result in context['graph']['tree_scores'][tree_id] as a dict.
         """
         # Get all comments in the tree
-        context_text = self.formulate_tree(context, tree_id)
+        context_text = formulate_tree(context, tree_id)
 
         prompt = f"""
         You are an expert discussion analyst. Given the following discussion and the main claim or argument, assess whether the discussion contains the following 3 dimensions. For each dimension, provide a score of 0 or 1 (0 = not present, 1 = present), and a brief explanation for your score.
@@ -549,7 +502,7 @@ class CommentAnalyzer:
         )
         result_text = response.choices[0].message.content.strip()
         try:
-            result_json = json.loads(self.extract_json_from_markdown(result_text))
+            result_json = json.loads(extract_json_from_markdown(result_text))
         except Exception as e:
             print(f"Error parsing GPT response for tree scoring: {e}")
             result_json = {
@@ -618,7 +571,7 @@ class CommentAnalyzer:
                     candidate_comments = []
                     
                     # Check if comment mentions a user (@username)
-                    mentioned_user = self.extract_mentioned_user(comment.get('body', ''))
+                    mentioned_user = extract_mentioned_user(comment.get('body', ''))
                     
                     if mentioned_user:
                         # Find most recent 3 comments by mentioned user
