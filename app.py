@@ -216,7 +216,7 @@ def on_timeout_callback(timeout_info=None):
     # print(new_comments)
     # 收到新评论时重置计时器
     timer_manager.update_activity()
-    # 对比new_comments和Current_context['comments']，如果new_comments和Current_context['comments']数量相同，则进行超时干预
+    # 对比new_comments和Current_context['comments']，如果new_comments和Current_context['comments']数量相同，说明没有新的评论，则进行超时干预
     if len(new_comments) == len(Current_context['comments']):
         # 如果时间阶段耐心值耗尽，则进行超时干预
         Current_context['time_patience'] = Current_context['time_patience'] - 1
@@ -281,6 +281,9 @@ def on_timeout_callback(timeout_info=None):
             # # 更新上下文
             # Current_context['comments'].append(comment_response_data)
             # 更新数据库
+        elif Current_context['discussion_patience'] ==4:
+            # 到达终点
+            pass
         else:
             pass
         update_context_to_database()
