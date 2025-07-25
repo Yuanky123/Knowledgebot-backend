@@ -9,7 +9,7 @@ from collections import defaultdict, deque
 import arg
 import json
 import re
-from .utils import build_parent_chain, extract_json_from_markdown, extract_mentioned_user, formulate_tree
+from .utils import build_parent_chain, extract_json_from_markdown, extract_mentioned_user, formulate_tree, list_tree_ids
 
 # Configure OpenAI client
 client = OpenAI(
@@ -277,91 +277,6 @@ class CommentAnalyzer:
             print(f"Error calling ChatGPT API: {e}")
             return False
 
-
-    def extract_integrative_comments(self, context):
-        # TODO: improve logic to extract integrative comment only. Now it is returning all comments in phase 3.
-        return [
-            {
-                "body": comment["body"],
-                "author_name": comment["author_name"]
-            } for comment in context.get('comments', []) if comment.get('message_phase', 0) == 3]
-
-    def rate_connection_with_all_trees(self, context, integrative_comments, tree_ids):
-        try:
-            nodes = context['graph']['nodes']
-            all_comments = context.get('comments', [])
-            id_to_comment = {c.get('id'): c for c in all_comments}
-            tree_contexts = []
-            for idx, t_id in enumerate(tree_ids):
-                context_text = formulate_tree(context, t_id)
-                tree_contexts.append(f"Tree {idx+1} (ID: {t_id}):\n{context_text}")
-            all_trees_text = "\n\n".join(tree_contexts)
-            prompt = f"""
-            There are several comments that integrates the past discussion.
-            For each discussion tree below that represents part of the discussion, determine if these comments match the tree (0 or 1, 0 = no match, 1 = match).
-            
-            Consider:
-            1. Does the new comment reference any points made in the tree?
-            2. Is there a clear semantic or logical connection between the new comment and the points made in the tree?
-
-            Comments:
-            """
-
-            
-            for comment in integrative_comments:
-                prompt += f"""
-                    Comment (Author: {comment.get('author_name', 'Unknown')}):
-                    {build_parent_chain(comment, id_to_comment)}
-                    {comment.get('body', 'No content')}
-                """
-                    
-
-            prompt += f"""
-
-            Note that:
-            - The new comment does not have to be a continuation of the past discussion. It can be a combination of ideas proposed in the tree or even a combination of ideas from this and other trees.
-
-            {all_trees_text}
-
-            
-            Respond with a JSON object mapping tree index (starting from 1) to an object with 
-            "score": 0 or 1, 0 = no match, 1 = match
-            "reason": summary of the new comment and the context, and brief explanation of your decision
-
-            Example:
-            {{
-                "1": {{"score": 1, "reason": "The comments suggest that both physical and mental health issues are as important. This addresses the past discussion that graduate students' mental health should be supported. Part of the new comment is addressing the past discussion."}},
-                "2": {{"score": 0, "reason": "The comments suggest that both physical and mental health issues are as important. The past discussion is about campus design. The new comment does not explicitly address campus design issues."}}
-            }}
-            """
-
-            response = client.chat.completions.create(
-                model=arg.OPENAI_MODEL,
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant that rates comment relationships. Always respond with valid JSON format."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=400,
-                temperature=0.1
-            )
-            result_text = response.choices[0].message.content.strip()
-            try:
-                result_json = json.loads(extract_json_from_markdown(result_text))
-                result = {}
-                for idx, t_id in enumerate(tree_ids):
-                    key = str(idx+1)
-                    entry = result_json.get(key, {})
-                    score = int(entry.get('score', 0))
-                    reason = entry.get('reason', 'No reason provided')
-                    result[t_id] = (score, reason)
-                return result
-            except Exception as e:
-                print(f"Error parsing JSON response: {e}")
-                return {t_id: (0, 'Error parsing response.') for t_id in tree_ids}
-        except Exception as e:
-            print(f"Error calling ChatGPT API: {e}")
-            return {t_id: (0, 'Error calling API.') for t_id in tree_ids}
-    
     def extract_argument_and_counterargument(self, context, tree_id):
         """
         Use GPT to extract the main argument and the main counterargument from a tree.
@@ -513,6 +428,56 @@ class CommentAnalyzer:
 
         return result_json
 
+    def list_conflicts(self, context):
+        graph = context['graph']
+        nodes = graph.get('nodes', [])
+        tree_ids = list_tree_ids(context)
+        # Ensure arguments are present
+        if 'arguments' not in graph:
+            graph['arguments'] = {}
+        for tid in tree_ids:
+            if tid not in graph['arguments']:
+                graph['arguments'][tid] = self.extract_argument_and_counterargument(context, tid)
+        # Intra-tree: argument vs counterargument for each tree
+        intra_tree = {}
+        for tid in tree_ids:
+            arg = graph['arguments'][tid].get('argument', {}).get('text', '')
+            ctr = graph['arguments'][tid].get('counterargument', {}).get('text', '')
+            intra_tree[tid] = {'argument': arg, 'counterargument': ctr}
+        # Inter-tree: all arguments across trees
+        inter_tree = {}
+        for tid1 in tree_ids:
+            arg1 = graph['arguments'][tid1].get('argument', {}).get('text', '')
+            inter_tree[tid1] = {'argument': arg1}
+        return {'intra_tree': intra_tree, 'inter_tree': inter_tree}
+
+    def map_phase3_comments_to_intra_conflicts(self, context, intra_tree):
+        # TODO: Implement this function: compare each phase 3 comment against all intra tree comments. 
+        # For each intra tree conflict let GPT give a score of whether they are related or not (0 or 1) with a reason.
+        # I suggest only query GPT once and let GPT rate all connections since it might hallucinate and give all 1 scores if you compare with only one conflict each time.
+        # Return a map with key = tree_id (conflict id) and value = [comment_ids]
+        pass
+
+    def map_phase3_comments_to_inter_conflicts(self, context, inter_tree):
+        # TODO: Implement this function: compare each phase 3 comment against all inter tree dimentions. 
+        # For each dimension of the conflict let GPT give a score of whether the comment is related ot it or not (0 or 1) with a reason.
+        # I suggest only query GPT once and let GPT rate all connections since it might hallucinate and give all 1 scores if you compare with only one dimension each time.
+        # Return a map with key = tree_id (dimension id) and value = [comment_ids]
+        pass
+    
+    def determine_consensus_of_intra_conflicts(self, context, mapping):
+        # TODO: Implemenet this function: for each conflict get all phase 3 comments related to this conflict and rate the degree of consensus.
+        # Score from 0 to 2 (0 = no consensus, 1 = partial consensus, 2 = complete consensus) and let GPT give a reason for the scoring.
+        # Return a map with key = tree_id and value = score with a reason
+        pass
+
+    def determine_coverage_of_inter_conflicts(self, context, mapping):
+        # TODO: Implemenet this function: get all phase 3 comments related to this conflict and for each dimension determine whether the phase 3 comments cover it.
+        # Score from 0 to 1 (0 = not covered, 1 = covered) and let GPT give a reason for the scoring.
+        # Return a map with key = tree_id and value = score with a reason
+        pass
+
+        
     def add_to_graph(self, context, new_comments):
         graph = context['graph']
         nodes = graph.get('nodes', [])
@@ -642,6 +607,8 @@ class CommentAnalyzer:
         graph['nodes'] = nodes
         graph['edges'] = edges
         return graph
+
+
     
     def check_discussion_sufficiency(self, context, new_comments):
         """检查当前阶段讨论是否充分"""
@@ -679,15 +646,7 @@ class CommentAnalyzer:
             elif current_phase == 2:
                 #判断阶段二每个tree是否都有讨论的各个部分
                 # For each tree, score and store the table
-
-                tree_ids = set()
-                for node in context['graph']['nodes']:
-                    tids = node.get('tree_id', [])
-                    if isinstance(tids, int):
-                        tids = [tids]
-                    for tid in tids:
-                        if tid >= 0:
-                            tree_ids.add(tid)
+                tree_ids = list_tree_ids(context)
                 if 'arguments' not in context['graph']:
                     context['graph']['arguments'] = {}
                 if 'tree_scores' not in context['graph']:
@@ -726,15 +685,19 @@ class CommentAnalyzer:
                             "explanation": "No counterargument found"
                         }
                     context['graph']['tree_scores'][tid] = score
-                    # Check if all four scores are 1
+                    # Either no counterargument or has all dimensions of counterargument
                     if not (
                         score.get('evidence', {}).get('score', 0) == 1 and
                         score.get('reasoning', {}).get('score', 0) == 1 and
-                        score.get('qualifier', {}).get('score', 0) == 1 and
-                        score.get('counterargument', {}).get('score', 0) == 1 and
-                        score.get('counterargument_evidence', {}).get('score', 0) == 1 and
-                        score.get('counterargument_reasoning', {}).get('score', 0) == 1 and
-                        score.get('counterargument_qualifier', {}).get('score', 0) == 1
+                        score.get('qualifier', {}).get('score', 0) == 1 and (
+                            score.get('counterargument', {}).get('score', 0) == 0 or 
+                            (
+                                score.get('counterargument', {}).get('score', 0) == 1 and
+                                score.get('counterargument_evidence', {}).get('score', 0) == 1 and
+                                score.get('counterargument_reasoning', {}).get('score', 0) == 1 and
+                                score.get('counterargument_qualifier', {}).get('score', 0) == 1
+                            )
+                        )
                     ):
                         all_trees_full = False
                 if all_trees_full:
@@ -747,27 +710,24 @@ class CommentAnalyzer:
                     break
             elif current_phase == 3:
                 #判断阶段三的评论是否充分
-                integrative_comments = self.extract_integrative_comments(context)
-                print(integrative_comments)
-                if 'addressed_in_phase_3' not in context['graph']:
-                    context['graph']['addressed_in_phase_3'] = {}
-                tree_ids = set()
-                for node in context['graph']['nodes']:
-                    tids = node.get('tree_id', [])
-                    if isinstance(tids, int):
-                        tids = [tids]
-                    for tid in tids:
-                        if tid >= 0:
-                            tree_ids.add(tid)
-                tree_ids_list = list(tree_ids)
-                for tid in tree_ids_list:
-                    context['graph']['addressed_in_phase_3'][tid] = False
-                result = self.rate_connection_with_all_trees(context, integrative_comments, tree_ids_list)
-                for tid in tree_ids_list:
-                    if result[tid][0] == 1:
-                        context['graph']['addressed_in_phase_3'][tid] = True
-                # Advance phase only if all addressed_in_phase_3 are True
-                if all(context['graph']['addressed_in_phase_3'].get(tid, False) for tid in tree_ids_list):
+                conflicts = self.list_conflicts(context)
+                context['graph']['conflicts'] = conflicts
+                intra_conflicts_mapping = self.map_phase3_comments_to_intra_conflicts(context, conflicts['intra_tree'])
+                inter_conflicts_mapping = self.map_phase3_comments_to_inter_conflicts(context, conflicts['inter_tree'])
+                context['graph']['intra_conflicts_mapping'] = intra_conflicts_mapping
+                context['graph']['inter_conflicts_mapping'] = inter_conflicts_mapping
+                intra_conflicts_consensus_rating = self.determine_consensus_of_intra_conflicts(context, intra_conflicts_mapping)
+                inter_conflicts_coverage_rating = self.determine_coverage_of_inter_conflicts(context, inter_conflicts_mapping)
+                context['graph']['intra_conflicts_consensus_rating'] = intra_conflicts_consensus_rating
+                context['graph']['inter_conflicts_coverage_rating'] = inter_conflicts_coverage_rating
+                
+                
+                # Advance phase only if all intra-tree conflicts have consensus score >= 1 and all inter-tree conflict dimensions have score == 1
+                intra_consensus = context['graph'].get('intra_conflicts_consensus_rating', {})
+                inter_coverage = context['graph'].get('inter_conflicts_coverage_rating', {})
+                all_intra_ok = all(v.get('score', 0) >= 1 for v in intra_consensus.values())
+                all_inter_ok = all(v.get('score', 0) == 1 for v in inter_coverage.values())
+                if all_intra_ok and all_inter_ok:
                     new_discussion_phase = 4
                     new_discussion_patience = arg.MAX_PATIENCE
                 else:
