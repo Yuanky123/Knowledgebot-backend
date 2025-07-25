@@ -759,8 +759,13 @@ class CommentAnalyzer:
                     if context['graph']['conflicts']['intra_tree'][tid]['consensus_rating']['score'] < 1 or context['graph']['conflicts']['inter_tree'][tid]['coverage_rating']['score'] < 1:
                         all_ok = False
                         break
-                new_discussion_phase = 4
-                new_discussion_patience = arg.MAX_PATIENCE
+                if all_ok:
+                    new_discussion_phase = 4
+                    new_discussion_patience = arg.MAX_PATIENCE
+                else:
+                    new_discussion_phase = 3
+                    new_discussion_patience = current_discussion_patience - len(new_comments)
+                    break
             elif current_phase == 4:
                 # 判断阶段四的评论是否充分
                 potential_co_construction_points = [] #从原来的数据里提取
