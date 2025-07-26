@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 import random
 import json
-import utils
+from . import utils
 
 from openai import OpenAI
 
@@ -81,7 +81,7 @@ class ResponseGenerator:
             else:
                 raise ValueError(f"Invalid intervention style: {intervention_style}")
 
-        elif current_phase == 2: # phase 2: discussion
+        elif current_phase == 2: # phase 2: exploration
             # select a tree (context['graph']['tree_scores'][tid]) where either the argument is not sufficient or the counterargument is not sufficient
             # Target: tree_id, argument/counterargument, dimension
             for tid in random.sample(list(context['graph']['tree_scores'].keys()), 1):
@@ -192,6 +192,175 @@ class ResponseGenerator:
                 intervention_message = comment
             elif intervention_style == 3: # delegating
                 intervention_message = strategy
+
+        elif current_phase == 3: # phase 3: negotiation
+            # select unsolved conflict: first intra-tree, then inter-tree
+            target_tree = None
+            for tid in random.sample(list(context['graph']['conflicts']['intra_tree'].keys()), 1):
+                if context['graph']['conflicts']['intra_tree'][tid]['consensus_rating']['score'] == 0:
+                    target_tree = context['graph']['conflicts']['intra_tree'][tid]
+                    break
+            if target_tree != None:
+                if intervention_style in [0, 1, 2]:
+                    if intervention_style == 0: # telling
+                        prompt = f'''
+                        You will be given a post, and two conflicting arguments related to one same aspect.
+                        Your task is to find a direction to continue the discussion, which is helpful to resolve the conflict.
+
+                        Note: 
+                        - While guiding the users to resolve the conflict, you should focus on the original post. Do not be off-topic when resolving the conflict.
+
+                        The post is:
+                        {post_information}
+                        
+                        One of the arguments is:
+                        {target_tree['argument']}
+                        The other (conflicting) argument is:
+                        {target_tree['counterargument']}
+                        
+                        Respond with a JSON object containing:
+                        - "comment": string, the direction to continue the discussion. The format should be "There seems to be a conflict between <the two arguments>. Please <direction>."
+                        '''
+                    elif intervention_style == 1: # selling
+                        prompt = f'''
+                        You will be given a post, and two conflicting arguments related to one same aspect.
+                        Your task is to find a direction to continue the discussion, which is helpful to resolve the conflict.
+
+                        Note: 
+                        - While guiding the users to resolve the conflict, you should focus on the original post. Do not be off-topic when resolving the conflict.
+
+                        The post is:
+                        {post_information}
+                        
+                        One of the arguments is:
+                        {target_tree['argument']}
+                        The other (conflicting) argument is:
+                        {target_tree['counterargument']}
+                        
+                        Respond with a JSON object containing:
+                        - "comment": string, the direction to continue the discussion. The format should be "There seems to be a conflict between <the two arguments>. Please <direction>, because <the benefits to discuss this direction>."
+                        '''
+                    elif intervention_style == 2: # participating
+                        prompt = f'''
+                        You will be given a post, and two conflicting arguments related to one same aspect.
+                        Your task is to act like a user in this discussion, and generate a comment, which is supposed to be helpful to resolve the conflict.
+
+                        Note: 
+                        - While trying to resolve the conflict, you should keep your comment related to the original post. Do not be off-topic when resolving the conflict.
+
+                        The post is:
+                        {post_information}
+                        
+                        One of the arguments is:
+                        {target_tree['argument']}
+                        The other (conflicting) argument is:
+                        {target_tree['counterargument']}
+
+                        Respond with a JSON object containing:
+                        - "comment": string, the user-like comment to resolve the conflict. 
+                        '''
+                    response = client.chat.completions.create(
+                        model="gemini-2.0-flash",
+                        messages=[
+                            {"role": "system", "content": "You are an expert in analyzing online discussions."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.1
+                    )
+                    response = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content))
+                    intervention_message = response.get('comment', '')
+                elif intervention_style == 3: # delegating
+                    intervention_message = strategy
+                else:
+                    raise ValueError(f"Invalid intervention style: {intervention_style}")
+            else: # inter-tree conflict
+                dimensions = context['graph']['conflicts']['inter_tree']['dimensions']
+                under_addressed_arguments = []
+                for tid in dimensions:
+                    if dimensions[tid].get('coverage_rating', {}).get('score', 1) == 0:
+                        under_addressed_arguments.append(dimensions[tid].get('argument', ''))
+                # we assume that len(under_addressed_arguments) must be greater than 0
+                under_addressed_arguments_all = ''.join([f'Argument {i+1}: {arg}\n' for i, arg in enumerate(under_addressed_arguments)])
+                
+                if intervention_style in [0, 1, 2]:
+                    if intervention_style == 0: # telling
+                        prompt = f'''
+                        You will be given a post, and a list of under-addressed arguments related to the post.
+                        Your task is to generate a comment to address the under-addressed arguments. 
+                        
+                        Note:
+                        - When mentioning the under-addressed arguments, you should summarize each argument as a keyword or short phrase. Do not copy the original argument text.
+                        - While addressing the under-addressed arguments, you should focus on the original post. Do not be off-topic.
+
+                        The post is:
+                        {post_information}
+
+                        The under-addressed arguments are:
+                        {under_addressed_arguments_all}
+
+                        Respond with a JSON object containing:
+                        - "comment": string, the comment to address the under-addressed arguments. The format should be: "Considering the current discussion progress, here are ... other ... <under_addressed_arguments_keywords>. Please include them into the discussion."
+                        '''
+                    elif intervention_style == 1: # selling
+                        prompt = f'''
+                        You will be given a post, and a list of under-addressed arguments related to the post.
+                        Your task is to generate a comment to address the under-addressed arguments, and tell the users the benefits of including them into the discussion.
+                        
+                        Note:
+                        - When mentioning the under-addressed arguments, you should summarize each argument as a keyword or short phrase. Do not copy the original argument text.
+                        - While addressing the under-addressed arguments, you should focus on the original post. Do not be off-topic. Focus on why including these arguments into the discussion is beneficial or important to the whole discussion.
+                        - Be concise while ensuring the comment is concrete enough.
+
+                        The post is:
+                        {post_information}
+
+                        The under-addressed arguments are:
+                        {under_addressed_arguments_all}
+
+                        Respond with a JSON object containing:
+                        - "comment": string, the comment to address the under-addressed arguments. The format should be: "Considering the current discussion progress, here are ... other ... <under_addressed_arguments_keywords>. Please include them into the discussion because <the benefits of doing so>."
+                        '''
+                    elif intervention_style == 2: # participating
+                        prompt = f'''
+                        You will be given a post, and a list of under-addressed arguments related to the post.
+                        Your task is to act like a user in this discussion, and generate a comment to address the under-addressed arguments.
+                        Specifically, given the under-addressed arguments, you should generate a comment trying to include them into the discussion. 
+                        
+                        Note:
+                        - When mentioning the under-addressed arguments, you should summarize each argument as a keyword or short phrase. Do not copy the original argument text.
+                        - While addressing the under-addressed arguments, you should focus on the original post. Do not be off-topic.
+                        - Be concise while ensuring the comment is concrete enough.
+                        - Make the tone as natural as possible, like a real user. Do not use confusing opening words like "That's a good question!" because it requires someone to propose a question before you, otherwise it will seem unnatural.
+                        - These under-addressed arguments are assumed to be conflicting with each other. Thus, you should try to negotiate and balance them.
+
+                        The post is:
+                        {post_information}
+
+                        The under-addressed arguments are:
+                        {under_addressed_arguments_all}
+
+                        Respond with a JSON object containing:
+                        - "comment": string, the user-like comment to address the under-addressed arguments."
+                        '''
+                        # TODO: test needed; using context closer to our final setting: "who is the most evil person in the world" instead of "how can we make people happy in cities"
+                    response = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": "You are an expert in analyzing online discussions."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.1
+                    )
+                    response = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content))
+                    intervention_message = response.get('comment', '')
+                elif intervention_style == 3: # delegating
+                    intervention_message = strategy
+                else:
+                    raise ValueError(f"Invalid intervention style: {intervention_style}")
+        elif current_phase == 4: # phase 4: integration
+            pass
+                
+            
 
         # if intervention_style == 0:
         #     pass
