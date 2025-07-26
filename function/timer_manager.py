@@ -5,6 +5,7 @@ import threading
 import time
 from datetime import datetime, timedelta
 from typing import Callable, Optional
+import traceback
 
 class TimerManager:
     """计时器管理器"""
@@ -89,7 +90,7 @@ class TimerManager:
             try:
                 self.callback_func(timeout_info)
             except Exception as e:
-                print(f"执行超时回调函数时出错: {e}")
+                print(f"执行超时回调函数时出错: {traceback.format_exc()}")
         
         # 重新启动计时器以持续监控
         self.start_timer()
