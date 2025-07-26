@@ -48,3 +48,16 @@ def extract_json_from_markdown(markdown_text):
     cleaned = re.sub(r'^```(?:json)?\s*', '', markdown_text.strip(), flags=re.IGNORECASE)
     cleaned = re.sub(r'```$', '', cleaned.strip())
     return cleaned.strip()
+
+def list_tree_ids(context):
+    tree_ids = set()
+    nodes = context['graph']['nodes']
+    for node in nodes:
+        tids = node.get('tree_id', [])
+        if isinstance(tids, int):
+            tids = [tids]
+        for tid in tids:
+            if tid >= 0:
+                tree_ids.add(tid)
+    tree_ids = list(tree_ids)
+    return tree_ids
