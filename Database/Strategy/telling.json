@@ -1,6 +1,6 @@
 {
-    "initiation":  "我们正开始讨论{topic}。让我先分享一个观点：{diverse_viewpoint}。请大家思考一下这个角度，并分享你们的不同看法。",
-    "exploration": "基于刚才的讨论，我想补充一个重要的维度：{new_dimension}。这个角度可以帮助我们更全面地理解{topic}。让我详细解释一下...",
-    "negotiation": "我观察到讨论中出现了一些不同的观点：{viewpoint_1}和{viewpoint_2}。让我来澄清一下这些差异的本质：{clarification}。",
+    "initiation":  "We have discussed {existing_aspects}. Now, please consider {new_angle} and share your thoughts.",
+    "exploration": "For the argument {target_argument}, can anyone provide more {missing_support} for it?",
+    "negotiation": "I noticed that there still exist some conflicts unresolved, for example, {conflicts}. Please share your thoughts on this conflict.",
     "co_construction": "我看到大家在{issue}上有不同的立场，这很正常。我相信你们有能力通过讨论找到一个好的解决方案。请继续你们的协商。"  
 } 

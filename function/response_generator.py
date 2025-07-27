@@ -1,14 +1,18 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+from math import e
 import random
 import json
+
+from LLM_Finetune.new_data.data_preprocessing import comment
 from . import utils
+from .. import arg
 
 from openai import OpenAI
 
 client = OpenAI(
-    base_url='https://api.zhizengzeng.com/v1',
-    api_key="sk-zk23e12430a30075ee3d9858364a99d800867112483439ff"
+    base_url='https://api.openai-proxy.org/v1',
+    api_key=arg.OPENAI_API_KEY
     )
 
 
@@ -31,12 +35,11 @@ class ResponseGenerator:
         arguments_information = context['graph']['arguments']
 
         if current_phase == 1:
-            # extract 1. existing aspects 2. one new angle from arguments
             prompt = f'''
             You will be given a post and a list of arguments extracted from the comments.
             Your task is to:
             1. For each argument, extract the key aspects of the argument. The "key aspects" should be concise, in no more than 3 words.
-            2. Based on the existing arguments and the post, propose a new angle of discussion. The new angle of discussion should be concise, in no more than 3 words.
+            2. Based on the existing arguments and the post, propose a new angle of discussion which is independent from all the existing arguments. The new angle of discussion should be concise, in no more than 3 words.
             3. Give a reason why this new angle is important to push the discussion forward.
 
             The post is:
@@ -52,30 +55,55 @@ class ResponseGenerator:
             '''
 
             response = client.chat.completions.create(
-                model="gemini-2.0-flash",
+                model=arg.OPENAI_MODEL,
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that extracts key aspects of arguments and proposes new angles of discussion."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1
             )
-            # TODO: 要不要限制bot在这一阶段不要直接提出integrated的观点？
             response = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content))
             existing_aspects = response.get('key_aspects', [])
             new_angle = response.get('new_angle_of_discussion', '')
             reason = response.get('reason', '')
 
-            if intervention_style in [0, 1]: # telling, selling
+            if intervention_style == 0: # telling
                 intervention_message = strategy.format(
                     existing_aspects=existing_aspects,
                     new_angle=new_angle
                 )
-            elif intervention_style == 2: # participating
+            elif intervention_style == 1: # selling
                 intervention_message = strategy.format(
-                    existing_aspects=existing_aspects,
+                    existing_aspects=', '.join(existing_aspects),
                     new_angle=new_angle,
-                    reason=reason
+                    benefits=reason.replace('Because ', '')
                 )
+            elif intervention_style == 2: # participating
+                prompt = f'''
+                You will be given a post, existing arguments, and a new angle of discussion.
+                Your task is to, based on the new angle of discussion, generate a user-like comment proposing this new angle of discussion.
+
+                The post is:
+                {post_information}
+
+                The existing arguments are:
+                {arguments_information}
+
+                The new angle of discussion is:
+                {new_angle}
+
+                Respond with a JSON object containing:
+                - "comment": string, the user-like comment proposing the new angle of discussion.
+                '''
+                response = client.chat.completions.create(
+                    model=arg.OPENAI_MODEL,
+                    messages=[
+                        {"role": "system", "content": "You are an expert in analyzing online discussions."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.1
+                )
+                intervention_message = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('comment', '')
             elif intervention_style == 3: # delegating
                 intervention_message = strategy
             else:
@@ -83,10 +111,8 @@ class ResponseGenerator:
 
         elif current_phase == 2: # phase 2: exploration
             # select a tree (context['graph']['tree_scores'][tid]) where either the argument is not sufficient or the counterargument is not sufficient
-            # Target: tree_id, argument/counterargument, dimension
             for tid in random.sample(list(context['graph']['tree_scores'].keys()), 1):
                 score = context['graph']['tree_scores'][tid]
-                # first check if the argument is sufficient
                 if score.get('evidence', {}).get('score', 0) == 0:
                     target_argument = context['graph']['arguments'][tid]['argument']
                     missing_support = 'evidence'
@@ -108,7 +134,6 @@ class ResponseGenerator:
                 else:
                     continue
             # Not all arguments are sufficient in phase 2. So we should eventually find one that is insufficient.
-            # adapt to different intervention styles
             if intervention_style == 0: # telling
                 intervention_message = strategy.format(
                     target_argument=target_argument,
@@ -141,15 +166,14 @@ class ResponseGenerator:
                 - "benefits": string, the benefits of adding {missing_support} to the argument. The format should be "Because this <benefits>." Please be concise, in no more than one sentence.
                 '''
                 response = client.chat.completions.create(
-                    model="gemini-2.0-flash",
+                    model=arg.OPENAI_MODEL,
                     messages=[
                         {"role": "system", "content": "You are an expert in analyzing online discussions."},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.1
                 )
-                response = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content))
-                benefits = response.get('benefits', '')
+                benefits = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('benefits', '')
                 intervention_message = strategy.format(
                     target_argument=target_argument['text'],
                     missing_support=missing_support,
@@ -180,18 +204,18 @@ class ResponseGenerator:
                 - "comment": string, the comment asking for more support on the missing dimension. 
                 '''
                 response = client.chat.completions.create(
-                    model="gemini-2.0-flash",
+                    model=arg.OPENAI_MODEL,
                     messages=[
                         {"role": "system", "content": "You are an expert in analyzing online discussions."},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.1
                 )
-                response = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content))
-                comment = response.get('comment', '')
-                intervention_message = comment
+                intervention_message = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('comment', '')
             elif intervention_style == 3: # delegating
                 intervention_message = strategy
+            else:
+                raise ValueError(f"Invalid intervention style: {intervention_style}")
 
         elif current_phase == 3: # phase 3: negotiation
             # select unsolved conflict: first intra-tree, then inter-tree
@@ -200,75 +224,70 @@ class ResponseGenerator:
                 if context['graph']['conflicts']['intra_tree'][tid]['consensus_rating']['score'] == 0:
                     target_tree = context['graph']['conflicts']['intra_tree'][tid]
                     break
-            if target_tree != None:
-                if intervention_style in [0, 1, 2]:
-                    if intervention_style == 0: # telling
-                        prompt = f'''
-                        You will be given a post, and two conflicting arguments related to one same aspect.
-                        Your task is to find a direction to continue the discussion, which is helpful to resolve the conflict.
+            if target_tree != None: # find a intra-tree conflict
+                # first generate: under_addressed_conflicts, benefits
+                prompt = f'''
+                You will be given a post, and a pair of conflicting arguments related to one same aspect.
+                Your task is to summarize the under-addressed conflicts in a concise way, like a short phrase. Also, shortly explain why resolving this conflict is important to the discussion.
 
-                        Note: 
-                        - While guiding the users to resolve the conflict, you should focus on the original post. Do not be off-topic when resolving the conflict.
+                The post is:
+                {post_information}
+                
+                The argument is:
+                {target_tree['argument']}
+                The counterargument is:
+                {target_tree['counterargument']}
+                
+                Respond with a JSON object containing:
+                - "conflicts": string, the under-addressed conflicts. 
+                - "benefits": string, the benefits of resolving this conflict. The format should be "Because <benefits>."
+                '''
+                response = client.chat.completions.create(
+                    model=arg.OPENAI_MODEL,
+                    messages=[
+                        {"role": "system", "content": "You are an expert in analyzing online discussions."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.1
+                )
+                conflicts = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('conflicts', '')
+                benefits = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('benefits', '')
 
-                        The post is:
-                        {post_information}
-                        
-                        One of the arguments is:
-                        {target_tree['argument']}
-                        The other (conflicting) argument is:
-                        {target_tree['counterargument']}
-                        
-                        Respond with a JSON object containing:
-                        - "comment": string, the direction to continue the discussion. The format should be "There seems to be a conflict between <the two arguments>. Please <direction>."
-                        '''
-                    elif intervention_style == 1: # selling
-                        prompt = f'''
-                        You will be given a post, and two conflicting arguments related to one same aspect.
-                        Your task is to find a direction to continue the discussion, which is helpful to resolve the conflict.
+                if intervention_style == 0: # telling
+                    intervention_message = strategy.format(
+                        conflicts=conflicts,
+                    )
+                elif intervention_style == 1: # selling
+                    intervention_message = strategy.format(
+                        conflicts=conflicts,
+                        benefits=benefits.replace('Because', 'because')
+                    )
+                elif intervention_style == 2: # participating
+                    prompt = f'''
+                    You will be given a post, and a pair of conflicting arguments related to one same aspect.
+                    Your task is to act like a user in this discussion, and generate a comment trying to resolve the conflict.
 
-                        Note: 
-                        - While guiding the users to resolve the conflict, you should focus on the original post. Do not be off-topic when resolving the conflict.
-
-                        The post is:
-                        {post_information}
-                        
-                        One of the arguments is:
-                        {target_tree['argument']}
-                        The other (conflicting) argument is:
-                        {target_tree['counterargument']}
-                        
-                        Respond with a JSON object containing:
-                        - "comment": string, the direction to continue the discussion. The format should be "There seems to be a conflict between <the two arguments>. Please <direction>, because <the benefits to discuss this direction>."
-                        '''
-                    elif intervention_style == 2: # participating
-                        prompt = f'''
-                        You will be given a post, and two conflicting arguments related to one same aspect.
-                        Your task is to act like a user in this discussion, and generate a comment, which is supposed to be helpful to resolve the conflict.
-
-                        Note: 
-                        - While trying to resolve the conflict, you should keep your comment related to the original post. Do not be off-topic when resolving the conflict.
-
-                        The post is:
-                        {post_information}
-                        
-                        One of the arguments is:
-                        {target_tree['argument']}
-                        The other (conflicting) argument is:
-                        {target_tree['counterargument']}
-
-                        Respond with a JSON object containing:
-                        - "comment": string, the user-like comment to resolve the conflict. 
-                        '''
+                    The post is:
+                    {post_information}
+                    
+                    The argument is:
+                    {target_tree['argument']}
+                    The counterargument is:
+                    {target_tree['counterargument']}
+                    
+                    Respond with a JSON object containing:
+                    - "comment": string, the user-like comment trying to resolve the conflict.
+                    '''
                     response = client.chat.completions.create(
-                        model="gemini-2.0-flash",
+                        model=arg.OPENAI_MODEL,
                         messages=[
                             {"role": "system", "content": "You are an expert in analyzing online discussions."},
                             {"role": "user", "content": prompt}
                         ],
                         temperature=0.1
                     )
-                    response = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content))
-                    intervention_message = response.get('comment', '')
+                    comment = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('comment', '')
+                    intervention_message = comment
                 elif intervention_style == 3: # delegating
                     intervention_message = strategy
                 else:
@@ -281,98 +300,72 @@ class ResponseGenerator:
                         under_addressed_arguments.append(dimensions[tid].get('argument', ''))
                 # we assume that len(under_addressed_arguments) must be greater than 0
                 under_addressed_arguments_all = ''.join([f'Argument {i+1}: {arg}\n' for i, arg in enumerate(under_addressed_arguments)])
+
+                prompt = f'''
+                You will be given a post, and a list of under-addressed arguments related to the post.
+                Your task is to concisely summarize each under-addressed argument as a keyword or short phrase. Also, shortly explain why taking these under-addressed arguments into the negotiation process is important for the whole discussion.
+
+                The post is:
+                {post_information}
+
+                The under-addressed arguments are:
+                {under_addressed_arguments_all}
+
+                Respond with a JSON object containing:
+                - "under_addressed_arguments_keywords": a list of keywords or short phrases summarizing the under-addressed arguments.
+                - "reason": string, the reason why taking these under-addressed arguments into the negotiation process is important for the whole discussion. The format should be "Because <reason>."
+                '''
+                response = client.chat.completions.create(
+                    model=arg.OPENAI_MODEL,
+                    messages=[
+                        {"role": "system", "content": "You are an expert in analyzing online discussions."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.1
+                )
+                under_addressed_arguments_keywords = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('under_addressed_arguments_keywords', [])
+                reason = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('reason', '')
                 
-                if intervention_style in [0, 1, 2]:
-                    if intervention_style == 0: # telling
-                        prompt = f'''
-                        You will be given a post, and a list of under-addressed arguments related to the post.
-                        Your task is to generate a comment to address the under-addressed arguments. 
-                        
-                        Note:
-                        - When mentioning the under-addressed arguments, you should summarize each argument as a keyword or short phrase. Do not copy the original argument text.
-                        - While addressing the under-addressed arguments, you should focus on the original post. Do not be off-topic.
+                if intervention_style == 0: # telling
+                    intervention_message = strategy.format(
+                        under_addressed_arguments_keywords=under_addressed_arguments_keywords
+                    )
+                elif intervention_style == 1: # selling
+                    intervention_message = strategy.format(
+                        under_addressed_arguments_keywords=under_addressed_arguments_keywords,
+                        benefits=reason.replace('Because', 'because')
+                    )
+                elif intervention_style == 2: # participating
+                    prompt = f'''
+                    You will be given a post, and a list of under-addressed arguments related to the post.
+                    Your task is to act like a user in this discussion, and generate a comment trying to include these under-addressed arguments into the negotiation process.
 
-                        The post is:
-                        {post_information}
+                    The post is:
+                    {post_information}
 
-                        The under-addressed arguments are:
-                        {under_addressed_arguments_all}
-
-                        Respond with a JSON object containing:
-                        - "comment": string, the comment to address the under-addressed arguments. The format should be: "Considering the current discussion progress, here are ... other ... <under_addressed_arguments_keywords>. Please include them into the discussion."
-                        '''
-                    elif intervention_style == 1: # selling
-                        prompt = f'''
-                        You will be given a post, and a list of under-addressed arguments related to the post.
-                        Your task is to generate a comment to address the under-addressed arguments, and tell the users the benefits of including them into the discussion.
-                        
-                        Note:
-                        - When mentioning the under-addressed arguments, you should summarize each argument as a keyword or short phrase. Do not copy the original argument text.
-                        - While addressing the under-addressed arguments, you should focus on the original post. Do not be off-topic. Focus on why including these arguments into the discussion is beneficial or important to the whole discussion.
-                        - Be concise while ensuring the comment is concrete enough.
-
-                        The post is:
-                        {post_information}
-
-                        The under-addressed arguments are:
-                        {under_addressed_arguments_all}
-
-                        Respond with a JSON object containing:
-                        - "comment": string, the comment to address the under-addressed arguments. The format should be: "Considering the current discussion progress, here are ... other ... <under_addressed_arguments_keywords>. Please include them into the discussion because <the benefits of doing so>."
-                        '''
-                    elif intervention_style == 2: # participating
-                        prompt = f'''
-                        You will be given a post, and a list of under-addressed arguments related to the post.
-                        Your task is to act like a user in this discussion, and generate a comment to address the under-addressed arguments.
-                        Specifically, given the under-addressed arguments, you should generate a comment trying to include them into the discussion. 
-                        
-                        Note:
-                        - When mentioning the under-addressed arguments, you should summarize each argument as a keyword or short phrase. Do not copy the original argument text.
-                        - While addressing the under-addressed arguments, you should focus on the original post. Do not be off-topic.
-                        - Be concise while ensuring the comment is concrete enough.
-                        - Make the tone as natural as possible, like a real user. Do not use confusing opening words like "That's a good question!" because it requires someone to propose a question before you, otherwise it will seem unnatural.
-                        - These under-addressed arguments are assumed to be conflicting with each other. Thus, you should try to negotiate and balance them.
-
-                        The post is:
-                        {post_information}
-
-                        The under-addressed arguments are:
-                        {under_addressed_arguments_all}
-
-                        Respond with a JSON object containing:
-                        - "comment": string, the user-like comment to address the under-addressed arguments."
-                        '''
-                        # TODO: test needed; using context closer to our final setting: "who is the most evil person in the world" instead of "how can we make people happy in cities"
+                    The under-addressed arguments are:
+                    {under_addressed_arguments_all}
+                    
+                    Respond with a JSON object containing:
+                    - "comment": string, the user-like comment trying to include these under-addressed arguments into the negotiation process.
+                    '''
                     response = client.chat.completions.create(
-                        model="gpt-4o-mini",
+                        model=arg.OPENAI_MODEL,
                         messages=[
                             {"role": "system", "content": "You are an expert in analyzing online discussions."},
                             {"role": "user", "content": prompt}
                         ],
                         temperature=0.1
                     )
-                    response = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content))
-                    intervention_message = response.get('comment', '')
+                    comment = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('comment', '')
+                    intervention_message = comment
+                    # TODO: 纯粹address某几个tree，生成的评论感觉有点不自然
                 elif intervention_style == 3: # delegating
                     intervention_message = strategy
                 else:
                     raise ValueError(f"Invalid intervention style: {intervention_style}")
         elif current_phase == 4: # phase 4: integration
             pass
-                
-            
-
-        # if intervention_style == 0:
-        #     pass
-        #     intervention_message = ''
-        # elif intervention_style == 1:
-        #     pass
-        #     intervention_message = ''
-        # elif intervention_style == 2:
-        #     pass
-        #     intervention_message = ''
-        # elif intervention_style == 3: # delegating
-        #     intervention_message = strategy
 
         # response = {
         #     'body': 'test reply',

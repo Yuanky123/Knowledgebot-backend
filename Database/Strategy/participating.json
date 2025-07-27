@@ -1,6 +1,6 @@
 {
-    "initiation": "我们今天要讨论{topic}这个话题。我很好奇大家对这个话题的第一反应是什么？不管是问题、想法还是疑虑，都欢迎分享。",
-    "exploration": "刚才{user_name}提到了{point}，这让我想到了一个问题：{related_question}。我们一起来探讨一下这个问题吧。大家有什么想法？",
-    "negotiation": "我听到了{user1_name}的{viewpoint_1}和{user2_name}的{viewpoint_2}。有没有可能我们可以找到一种方式来整合这两个观点？大家觉得怎么样？",
+    "initiation": "",
+    "exploration": "",
+    "negotiation": "",
     "co_construction": "我们一起创造了很多有价值的insights。现在让我们collaborative地把这些insights整合成一个comprehensive的understanding。谁想先贡献一个key point？"
 } 
