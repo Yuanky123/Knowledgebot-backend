@@ -365,11 +365,11 @@ class ResponseGenerator:
                 else:
                     raise ValueError(f"Invalid intervention style: {intervention_style}")
         elif current_phase == 4: # phase 4: integration
-            pass
+            intervention_message = 'test reply'
 
-        # response = {
-        #     'body': 'test reply',
-        #     'post_id': context['post']['id'],
-        #     'parent_comment_id': None,
-        # }
+        response = {
+            'body': intervention_message,
+            'post_id': context['post']['id'],
+            'parent_comment_id': None,
+        }
         return response
