@@ -4,9 +4,8 @@ from math import e
 import random
 import json
 
-from LLM_Finetune.new_data.data_preprocessing import comment
 from . import utils
-from .. import arg
+import arg
 
 from openai import OpenAI
 
@@ -35,6 +34,7 @@ class ResponseGenerator:
         arguments_information = context['graph']['arguments']
 
         if current_phase == 1:
+            parent_comment_id = None
             prompt = f'''
             You will be given a post and a list of arguments extracted from the comments.
             Your task is to:
@@ -134,9 +134,17 @@ class ResponseGenerator:
                 else:
                     continue
             # Not all arguments are sufficient in phase 2. So we should eventually find one that is insufficient.
+            # get parent_comment_id from tid + argument/counterargument
+            parent_comment_id = None
+            argument_text = target_argument['text']
+            for comment in context['comments']:
+                if argument_text in comment['body']:
+                    parent_comment_id = comment['id']
+                    break
+            
             if intervention_style == 0: # telling
                 intervention_message = strategy.format(
-                    target_argument=target_argument,
+                    target_argument=target_argument['text'],
                     missing_support=missing_support
                 )
             elif intervention_style == 1: # selling
@@ -218,10 +226,11 @@ class ResponseGenerator:
                 raise ValueError(f"Invalid intervention style: {intervention_style}")
 
         elif current_phase == 3: # phase 3: negotiation
+            parent_comment_id = None
             # select unsolved conflict: first intra-tree, then inter-tree
             target_tree = None
             for tid in random.sample(list(context['graph']['conflicts']['intra_tree'].keys()), 1):
-                if context['graph']['conflicts']['intra_tree'][tid]['consensus_rating']['score'] == 0:
+                if context['graph']['conflicts']['intra_tree'][tid].get('consensus_rating', {}).get('score', 1) == 0:
                     target_tree = context['graph']['conflicts']['intra_tree'][tid]
                     break
             if target_tree != None: # find a intra-tree conflict
@@ -328,11 +337,11 @@ class ResponseGenerator:
                 
                 if intervention_style == 0: # telling
                     intervention_message = strategy.format(
-                        under_addressed_arguments_keywords=under_addressed_arguments_keywords
+                        conflicts=', '.join(under_addressed_arguments_keywords)
                     )
                 elif intervention_style == 1: # selling
                     intervention_message = strategy.format(
-                        under_addressed_arguments_keywords=under_addressed_arguments_keywords,
+                        conflicts=', '.join(under_addressed_arguments_keywords),
                         benefits=reason.replace('Because', 'because')
                     )
                 elif intervention_style == 2: # participating
@@ -365,11 +374,12 @@ class ResponseGenerator:
                 else:
                     raise ValueError(f"Invalid intervention style: {intervention_style}")
         elif current_phase == 4: # phase 4: integration
+            parent_comment_id = None
             intervention_message = 'test reply'
 
         response = {
             'body': intervention_message,
             'post_id': context['post']['id'],
-            'parent_comment_id': None,
+            'parent_comment_id': parent_comment_id,
         }
         return response
