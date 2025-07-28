@@ -1,6 +1,7 @@
 {
-    "initiation": "关于{topic}，我想先和大家分享一个特别有趣的perspective。{compelling_point}。这个观点为什么重要呢？因为它能帮助我们理解...",
-    "exploration": "听了大家的分享，我想提出一个观点：{viewpoint}。我这么说的理由是：{reasoning_1}、{reasoning_2}、{reasoning_3}。你们觉得这个观点有道理吗？",
-    "negotiation": "考虑到大家的不同观点，我想提出一个compromise方案：{compromise_solution}。这个方案的优势是{advantages}。你们觉得这个方案可行吗？",
-    "co_construction": "我们的讨论非常有价值！我们构建的understanding可以应用到{application_areas}。让我说明这些应用的具体价值：{specific_values}。"
+    "initiation": "We have discussed {existing_aspects}. Now, please consider {new_angle} and share your thoughts, because {benefits}",
+    "exploration": "For the argument {target_argument}, can anyone provide more {missing_support} for it? {benefits}",
+    "negotiation": "I noticed that there still exist some conflicts unresolved, for example, {conflicts}. Please share your thoughts on this conflict, {benefits}",
+    "co_construction": "我们的讨论非常有价值！我们构建的understanding可以应用到{application_areas}。让我说明这些应用的具体价值：{specific_values}。",
+    "co_construction_subphase_2": "TODO"
 } 
