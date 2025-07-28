@@ -9,11 +9,11 @@ class InterventionManager:
     def __init__(self, strategies):
         self.strategies = strategies
         self.strategy_names = {
-            0: 'initiation',
-            1: 'exploration',
-            2: 'negotiation',
-            3: 'co_construction',
-            4: 'co_construction_subphase_2'
+            1: 'initiation',
+            2: 'exploration',
+            3: 'negotiation',
+            4: 'co_construction',
+            5: 'co_construction_subphase_2'
         }
     
     def intervene(self, context):
