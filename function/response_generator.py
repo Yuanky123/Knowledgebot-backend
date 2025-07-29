@@ -22,6 +22,7 @@ class ResponseGenerator:
         self.response_history = []
     
     def generate_custom_response(self, context, strategy):
+        print(f"******** Generating custom response...")
         """根据策略生成回复"""
 
         intervention_style = context['style'] # 0: telling, 1: selling, 2: participating, 3: delegating
@@ -31,7 +32,7 @@ class ResponseGenerator:
             Post Title: {context['post']['title']}
             Post Body: {context['post']['body']}
             '''
-        arguments_information = context['graph']['arguments']
+        arguments_information = context['graph'].get('arguments', {})
 
         if current_phase == 1:
             parent_comment_id = None
@@ -69,7 +70,7 @@ class ResponseGenerator:
 
             if intervention_style == 0: # telling
                 intervention_message = strategy.format(
-                    existing_aspects=existing_aspects,
+                    existing_aspects=', '.join(existing_aspects),
                     new_angle=new_angle
                 )
             elif intervention_style == 1: # selling

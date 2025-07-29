@@ -230,15 +230,15 @@ def on_timeout_callback(timeout_info=None):
             response = response_generator.generate_custom_response(Current_context, intervention_strategy)
             # 发送给前端
             # POST/comments
-            # comment_response = make_api_request('POST', f"{arg.FRONTEND_URL}/comments", json_data=response)
-            # comment_response_data = comment_response.json()
-            # # print(comment_response_data)
-            # if comment_response.status_code == 200:
-            #     print("Comment posted successfully")
-            # else:
-            #     print("Failed to post comment")
-            # # 更新上下文
-            # Current_context['comments'].append(comment_response_data)
+            comment_response = make_api_request('POST', f"{arg.FRONTEND_URL}/comments", json_data=response)
+            comment_response_data = comment_response.json()
+            # print(comment_response_data)
+            if comment_response.status_code == 200:
+                print("Comment posted successfully")
+            else:
+                print("Failed to post comment")
+            # 更新上下文
+            Current_context['comments'].append(comment_response_data)
             # 更新数据库
             update_context_to_database()
         else:
@@ -298,4 +298,4 @@ if __name__ == '__main__':
     timer_manager.start_timer()
     
     # 使用arg.py中的环境变量配置
-    app.run(debug=arg.FLASK_DEBUG, host=arg.FLASK_HOST, port=arg.FLASK_PORT) 
+    app.run(debug=arg.FLASK_DEBUG, host=arg.FLASK_HOST, port=arg.FLASK_PORT, use_reloader=False) 
