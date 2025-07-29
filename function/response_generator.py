@@ -197,9 +197,8 @@ class ResponseGenerator:
                 - Reasoning: Logical connections, explanations, or justifications that link evidence to the argument, or show how conclusions of the argument are drawn.
                 - Qualifier: Words or phrases that indicate the strength, scope, or certainty of the argument (e.g., "usually", "sometimes", "might", "in most cases").
                 
-                Your task is to act like a user in this discussion, and ask for more support on the missing dimension for the argument.
+                Your task is to act like a user in this discussion, and provide support on the given missing dimension for the given argument.
                 Note:
-                - The comment should be closely related to the discussion topic, but not hollow words. For example, you cannot just say "Could you provide more evidence/reasoning/qualifier?".
                 - The comment should be based on current argument and semantically related to it. 
                 
                 The post is:
@@ -210,7 +209,7 @@ class ResponseGenerator:
                 It is insufficient in the following dimension: {missing_support}.
                 
                 Respond with a JSON object containing:
-                - "comment": string, the comment asking for more support on the missing dimension. 
+                - "comment": string, the comment providing support on the given missing dimension. You should first show that you (more or less) agree with the argument, and then provide the required support.
                 '''
                 response = client.chat.completions.create(
                     model=arg.OPENAI_MODEL,
