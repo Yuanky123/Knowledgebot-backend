@@ -32,22 +32,26 @@ class ResponseGenerator:
             Post Title: {context['post']['title']}
             Post Body: {context['post']['body']}
             '''
-        arguments_information = context['graph'].get('arguments', {})
 
         if current_phase == 1:
+
+            phase_1_comments = [comment for comment in context['comments'] if comment.get('message_phase', 1) == 1]
+
+            phase_1_comments_text = '\n'.join([f"Comment {i+1}: {comment['body']}" for i, comment in enumerate(phase_1_comments)])
+
             parent_comment_id = None
             prompt = f'''
-            You will be given a post and a list of arguments extracted from the comments.
+            You will be given a post and a list of comments expressing different opinions on the post.
             Your task is to:
-            1. For each argument, extract the key aspects of the argument. The "key aspects" should be concise, in no more than 3 words.
-            2. Based on the existing arguments and the post, propose a new angle of discussion which is independent from all the existing arguments. The new angle of discussion should be concise, in no more than 3 words.
+            1. Extract the key aspects of all the comments. The "key aspects" should be concise, in a word or short phrase. It is not necessary to have a one-to-one correspondence between the key aspects and the comments. For example, two comments that are very similar in content can be summarized into one key aspect. However, you should not over-summarize the comments so that the key aspects are too few and too general.
+            2. Based on the existing comments and the post, propose a new angle of discussion which is independent from all the existing arguments. The new angle of discussion should be concise, in no more than 3 words.
             3. Give a reason why this new angle is important to push the discussion forward.
 
             The post is:
             {post_information}
 
             The arguments are:
-            {arguments_information}
+            {phase_1_comments_text}
 
             Respond with a JSON object containing:
             - "key_aspects": a list of key aspects of the arguments
@@ -81,14 +85,14 @@ class ResponseGenerator:
                 )
             elif intervention_style == 2: # participating
                 prompt = f'''
-                You will be given a post, existing arguments, and a new angle of discussion.
+                You will be given a post, existing comments expressing different opinions on the post, and a new angle of discussion.
                 Your task is to, based on the new angle of discussion, generate a user-like comment proposing this new angle of discussion.
 
                 The post is:
                 {post_information}
 
                 The existing arguments are:
-                {arguments_information}
+                {phase_1_comments_text}
 
                 The new angle of discussion is:
                 {new_angle}
