@@ -1169,4 +1169,5 @@ class CommentAnalyzer:
                     new_discussion_phase = 4
                     new_discussion_patience = current_discussion_patience - len(new_comments)
                     break
+            current_phase = new_discussion_phase
         return {'phase': new_discussion_phase, 'patience': new_discussion_patience}
