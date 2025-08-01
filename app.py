@@ -225,13 +225,16 @@ def on_timeout_callback(timeout_info=None):
     
     new_comments_response = make_api_request('GET', f"{arg.FRONTEND_URL}/comments/{Current_context['post']['id']}")
     new_comments = new_comments_response.json().get('comments', [])
+    # sort by created_at (a string, like '2025-07-30T12:33:27.716Z')
+    new_comments.sort(key=lambda x: x['created_at'])
+
     # print(new_comments)
     # 收到新评论时重置计时器
     timer_manager.update_activity()
     # 对比new_comments和Current_context['comments']，如果new_comments和Current_context['comments']数量相同，说明没有新的评论，则进行超时干预
     if len(new_comments) == len(Current_context['comments']):
         # 如果时间阶段耐心值耗尽，则进行超时干预
-        print("Time out and no new comments. Start intervention...")
+        print("Time out and no new comments. Patience -1 ...")
         Current_context['time_patience'] = Current_context['time_patience'] - 1
         if Current_context['time_patience'] <= 0:
 
@@ -259,7 +262,8 @@ def on_timeout_callback(timeout_info=None):
             print(f"Current patience: {Current_context['time_patience']}")
             pass
     else: # new comments detected
-        new_added_comments = new_comments[len(Current_context['comments']):]
+        print(f"🐞: New comments detected; len(new_comments) = {len(new_comments)}, len(Current_context['comments']) = {len(Current_context['comments'])}")
+        new_added_comments = new_comments[len(Current_context['comments']):]        
         # 步骤1：分析最新评论阶段
         new_added_comments_phase = analyzer.analyze_phase(Current_context, new_added_comments)
         for i in range(len(new_added_comments)):
