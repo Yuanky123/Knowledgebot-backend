@@ -252,29 +252,21 @@ def on_timeout_callback(timeout_info=None):
             else:
                 print(f"Failed to post comment (no new comment detected): {comment_response.status_code}")
             # 更新上下文
-            Current_context['comments'].append(comment_response_data)
+            Current_context['comments'].append(comment_response_data) # only append the new comment sent by the bot
             # 更新数据库
             update_context_to_database()
         else:
             print(f"Current patience: {Current_context['time_patience']}")
             pass
-    else:
+    else: # new comments detected
         new_added_comments = new_comments[len(Current_context['comments']):]
         # 步骤1：分析最新评论阶段
         new_added_comments_phase = analyzer.analyze_phase(Current_context, new_added_comments)
         for i in range(len(new_added_comments)):
             new_added_comments[i]['message_phase'] = new_added_comments_phase[i]
-        # print(new_added_comments)
         Current_context['graph'] = analyzer.add_to_graph(Current_context, new_added_comments)
-        # print(Current_context['comments'])
-        # print(new_added_comments)
-        # Current_context['comments'] = Current_context['comments'] + new_added_comments
-        # print(Current_context['comments'])
 
         # 步骤2：检查当前应该协助的阶段
-        # print(f"==========Debug: Before check_discussion_sufficiency: Current_context['comments'] = {Current_context['comments']}")
-        # print(f"==========Debug: Before check_discussion_sufficiency: new_added_comments = {new_added_comments}")
-        # TODO: bug: Current_context['comments'] 和 new_added_comments 有重合 导致comment count重复
         analysis_result = analyzer.check_discussion_sufficiency(Current_context, new_added_comments)
         # Current_context['is_sufficient'] = analysis_result['is_sufficient']
         Current_context['comments'] = Current_context['comments'] + new_added_comments
@@ -300,7 +292,7 @@ def on_timeout_callback(timeout_info=None):
             else:
                 print(f"Failed to post comment (new comment detected): {comment_response.status_code}")
             # 更新上下文
-            Current_context['comments'].append(comment_response_data)
+            Current_context['comments'].append(comment_response_data) # only append the new comment sent by the bot
             # 更新数据库
             update_context_to_database()
         elif Current_context['discussion_patience'] ==4:

@@ -150,7 +150,6 @@ class ResponseGenerator:
             for comment in context['comments']:
                 if comment['body'] is None:
                     continue
-                # print(f"==========Debug: context['comments'] = {context['comments']}")
                 if argument_text in comment['body']:
                     parent_comment_id = comment['id']
                     break
