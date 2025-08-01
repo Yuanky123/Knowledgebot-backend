@@ -35,30 +35,42 @@ def update_context_to_database():
     with open(Current_context['discussion_database_path'], 'w', encoding='utf-8') as f:
         json.dump(Current_context, f, ensure_ascii=False, indent=4)
 
-        
+def load_context_from_database():
+    default_context = {
+        'post': {
+            'title': '',
+            'body': '',
+            'id': '',
+            'author_name': ''
+        },
+        'comments': [],
+        'phase': 0,
+        'discussion_patience': arg.MAX_PATIENCE,
+        'time_patience': arg.MAX_TIME_PATIENCE,
+        'style': arg.CURRENT_STYLE,
+        'topic': arg.CURRENT_TOPIC,
+        'token': '',
+        'discussion_database_path': arg.DATABASE_PATH + '/' + str(arg.CURRENT_TOPIC) + '.json',
+        'graph': {
+            'nodes': [],
+            'edges': []
+        }
+    }
+
+    path = default_context['discussion_database_path']
+
+    if os.path.exists(path):
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Failed to load context from {path}: {e}")
+
+    return default_context
 
 # 定义全局变量
-Current_context = { 
-                    'post': {
-                        'title': '',
-                        'body': '',
-                        'id': '',
-                        'author_name': ''
-                    }, 
-                    'comments': [], 
-                    'phase': 0, 
-                    # 'is_sufficient': False, 
-                    'discussion_patience': arg.MAX_PATIENCE,
-                    'time_patience': arg.MAX_TIME_PATIENCE,
-                    'style': arg.CURRENT_STYLE,
-                    'topic': arg.CURRENT_TOPIC,
-                    'token': '',
-                    'discussion_database_path': arg.DATABASE_PATH + '/' + str(arg.CURRENT_TOPIC) + '.json',
-                    'graph':{
-                        'nodes':[],
-                        'edges':[]
-                    }
-                }  # 当前上下文
+Current_context = load_context_from_database()
+# print(Current_context)
 
 # 策略数据库
 strategies_db = load_strategies(Current_context['style'])
@@ -219,6 +231,7 @@ def on_timeout_callback(timeout_info=None):
     # 对比new_comments和Current_context['comments']，如果new_comments和Current_context['comments']数量相同，说明没有新的评论，则进行超时干预
     if len(new_comments) == len(Current_context['comments']):
         # 如果时间阶段耐心值耗尽，则进行超时干预
+        print("Time out and no new comments. Start intervention...")
         Current_context['time_patience'] = Current_context['time_patience'] - 1
         if Current_context['time_patience'] <= 0:
 
@@ -228,6 +241,7 @@ def on_timeout_callback(timeout_info=None):
             intervention_strategy = intervention_manager.intervene(Current_context)
             # 生成干预响应
             response = response_generator.generate_custom_response(Current_context, intervention_strategy)
+            print(response)
             # 发送给前端
             # POST/comments
             comment_response = make_api_request('POST', f"{arg.FRONTEND_URL}/comments", json_data=response)
@@ -266,14 +280,17 @@ def on_timeout_callback(timeout_info=None):
         Current_context['comments'] = Current_context['comments'] + new_added_comments
         Current_context['discussion_patience'] = analysis_result['patience']
         Current_context['phase'] = analysis_result['phase']
+        update_context_to_database()
 
         # 步骤3：决定是否需要干预和如何干预
         # 如果耐心值耗尽，则进行促进干预，不然不干预
         if Current_context['discussion_patience'] <= 0:
+            print("Discussion patience out. Start intervention...")
             # 进行超时干预
             intervention_strategy = intervention_manager.intervene(Current_context)
             # 生成干预响应
-            response = response_generator.generate_custom_response(Current_context, intervention_strategy)
+            response = response_generator.generate_custom_response(Current_context, intervention_strategy) 
+            print(response)
             # 发送给前端
             # POST/comments
             comment_response = make_api_request('POST', f"{arg.FRONTEND_URL}/comments", json_data=response)
@@ -287,10 +304,10 @@ def on_timeout_callback(timeout_info=None):
             # 更新数据库
             update_context_to_database()
         elif Current_context['discussion_patience'] ==4:
+            Current_context['discussion_patience'] = arg.MAX_PATIENCE
+        if Current_context['phase'] == 5:
             # 到达终点
-            pass
-        else:
-            pass
+            timer_manager.stop_timer()
         update_context_to_database()
     # return response
 
