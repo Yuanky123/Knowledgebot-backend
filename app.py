@@ -233,16 +233,16 @@ def on_timeout_callback(timeout_info=None):
             comment_response = make_api_request('POST', f"{arg.FRONTEND_URL}/comments", json_data=response)
             comment_response_data = comment_response.json()
             # print(comment_response_data)
-            if comment_response.status_code == 200:
+            if comment_response.status_code in [200, 201]:
                 print("Comment posted successfully")
             else:
-                print("Failed to post comment")
+                print(f"Failed to post comment (no new comment detected): {comment_response.status_code}")
             # 更新上下文
             Current_context['comments'].append(comment_response_data)
             # 更新数据库
             update_context_to_database()
         else:
-            print(f"Current patience: {Current_context['discussion_patience']}")
+            print(f"Current patience: {Current_context['time_patience']}")
             pass
     else:
         new_added_comments = new_comments[len(Current_context['comments']):]
@@ -258,8 +258,12 @@ def on_timeout_callback(timeout_info=None):
         # print(Current_context['comments'])
 
         # 步骤2：检查当前应该协助的阶段
+        # print(f"==========Debug: Before check_discussion_sufficiency: Current_context['comments'] = {Current_context['comments']}")
+        # print(f"==========Debug: Before check_discussion_sufficiency: new_added_comments = {new_added_comments}")
+        # TODO: bug: Current_context['comments'] 和 new_added_comments 有重合 导致comment count重复
         analysis_result = analyzer.check_discussion_sufficiency(Current_context, new_added_comments)
         # Current_context['is_sufficient'] = analysis_result['is_sufficient']
+        Current_context['comments'] = Current_context['comments'] + new_added_comments
         Current_context['discussion_patience'] = analysis_result['patience']
         Current_context['phase'] = analysis_result['phase']
 
@@ -272,15 +276,16 @@ def on_timeout_callback(timeout_info=None):
             response = response_generator.generate_custom_response(Current_context, intervention_strategy)
             # 发送给前端
             # POST/comments
-            # comment_response_data = comment_response.json()
-            # # print(comment_response_data)
-            # if comment_response.status_code == 200:
-            #     print("Comment posted successfully")
-            # else:
-            #     print("Failed to post comment")
-            # # 更新上下文
-            # Current_context['comments'].append(comment_response_data)
+            comment_response = make_api_request('POST', f"{arg.FRONTEND_URL}/comments", json_data=response)
+            comment_response_data = comment_response.json()
+            if comment_response.status_code in [200, 201]:
+                print("Comment posted successfully")
+            else:
+                print(f"Failed to post comment (new comment detected): {comment_response.status_code}")
+            # 更新上下文
+            Current_context['comments'].append(comment_response_data)
             # 更新数据库
+            update_context_to_database()
         elif Current_context['discussion_patience'] ==4:
             # 到达终点
             pass

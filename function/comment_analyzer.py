@@ -78,7 +78,7 @@ class CommentAnalyzer:
                     messages=messages,
                     model="mistralai/Mistral-7B-Instruct-v0.3"
                 )
-                print(f"****************** Response: {response.choices[0].message.content}")
+                print(f"Comment Classifier Response: {response.choices[0].message.content}")
                 try:
                     model_prediction_phase = int(response.choices[0].message.content)
                 except:
@@ -882,7 +882,6 @@ class CommentAnalyzer:
         for comment in new_comments:
             cid = comment['id']
             phase = comment.get('message_phase', 0)
-            context['comments'].append(comment)
             if phase in [0, 3, 4]:
                 continue
 
