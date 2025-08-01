@@ -255,6 +255,7 @@ def on_timeout_callback(timeout_info=None):
             else:
                 print(f"Failed to post comment (no new comment detected): {comment_response.status_code}")
             # 更新上下文
+            comment_response_data['message_phase'] = Current_context['phase'] if Current_context['style'] == 2 else 0
             Current_context['comments'].append(comment_response_data) # only append the new comment sent by the bot
             # 更新数据库
             update_context_to_database()
@@ -300,6 +301,7 @@ def on_timeout_callback(timeout_info=None):
             else:
                 print(f"Failed to post comment (new comment detected): {comment_response.status_code}")
             # 更新上下文
+            comment_response_data['message_phase'] = Current_context['phase'] if Current_context['style'] == 2 else 0
             Current_context['comments'].append(comment_response_data) # only append the new comment sent by the bot
             # 更新数据库
             update_context_to_database()
