@@ -263,7 +263,11 @@ def on_timeout_callback(timeout_info=None):
             pass
     else: # new comments detected
         print(f"🐞: New comments detected; len(new_comments) = {len(new_comments)}, len(Current_context['comments']) = {len(Current_context['comments'])}")
-        new_added_comments = new_comments[len(Current_context['comments']):]        
+        # due to the append() after the bot sends a comment, the new_added_comments are not always the latest comments. We need to find the new_added_comments by comparing the ids.
+        current_context_comments_ids = [comment['id'] for comment in Current_context['comments']]
+        new_added_comments = [comment for comment in new_comments if comment['id'] not in current_context_comments_ids]
+        assert len(new_added_comments) == len(new_comments) - len(Current_context['comments'])
+
         # 步骤1：分析最新评论阶段
         new_added_comments_phase = analyzer.analyze_phase(Current_context, new_added_comments)
         for i in range(len(new_added_comments)):
