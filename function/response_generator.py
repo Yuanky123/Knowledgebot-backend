@@ -6,6 +6,7 @@ import json
 
 from . import utils
 import arg
+from pprint import pprint
 
 from openai import OpenAI
 
@@ -22,7 +23,7 @@ class ResponseGenerator:
         self.response_history = []
     
     def generate_custom_response(self, context, strategy):
-        print(f"******** Generating custom response...")
+        print(f"🟢: in function [generate_custom_response], current_phase = {context['phase']}")
         """根据策略生成回复"""
 
         intervention_style = context['style'] # 0: telling, 1: selling, 2: participating, 3: delegating
@@ -117,10 +118,18 @@ class ResponseGenerator:
                 raise ValueError(f"Invalid intervention style: {intervention_style}")
 
         elif current_phase == 2: # phase 2: exploration
+            print(f"[generate_custom_response]🐞: current_phase = 2, select a tree where the argument is not sufficient")
             # select a tree (context['graph']['tree_scores'][tid]) where either the argument is not sufficient or the counterargument is not sufficient
-            target_argument = None
-            for tid in random.sample(list(context['graph']['tree_scores'].keys()), 1):
+            target_argument, missing_support = None, None
+            for tid in random.sample(list(context['graph']['tree_scores'].keys()), len(context['graph']['tree_scores'])):
                 score = context['graph']['tree_scores'][tid]
+                # TODO: current loose sufficiency check
+                if score.get('evidence', {}).get('score', 0) + score.get('reasoning', {}).get('score', 0) + score.get('qualifier', {}).get('score', 0) >= 2:
+                    print(f"[generate_custom_response]🐞: Tree {tid} is sufficient, skip ...")
+                    continue
+                else:
+                    print(f"[generate_custom_response]🐞: Tree {tid} is not sufficient, select it ...")
+
                 if score.get('evidence', {}).get('score', 0) == 0:
                     target_argument = context['graph']['arguments'][tid]['argument']
                     missing_support = 'evidence'
@@ -140,9 +149,11 @@ class ResponseGenerator:
                     target_argument = context['graph']['arguments'][tid]['counterargument']
                     missing_support = 'qualifier'
                 else:
-                    continue
-            if target_argument == None:
-                intervention_message = "[Error: in phase 2, no target argument found]" # TODO: 最后测试时最好删掉
+                    raise ValueError(f"Should not reach here")
+                break
+
+            print(f"[generate_custom_response]🐞: Intervention target (tid = {tid}, missing_support = {missing_support}): {target_argument}")
+
             # Not all arguments are sufficient in phase 2. So we should eventually find one that is insufficient.
             # get parent_comment_id from tid + argument/counterargument
             parent_comment_id = None
@@ -240,7 +251,7 @@ class ResponseGenerator:
             parent_comment_id = None
             # select unsolved conflict: first intra-tree, then inter-tree
             target_tree = None
-            for tid in random.sample(list(context['graph']['conflicts']['intra_tree'].keys()), 1):
+            for tid in random.sample(list(context['graph']['conflicts']['intra_tree'].keys()), len(context['graph']['conflicts']['intra_tree'])):
                 if context['graph']['conflicts']['intra_tree'][tid].get('consensus_rating', {}).get('score', 1) == 0:
                     target_tree = context['graph']['conflicts']['intra_tree'][tid]
                     break

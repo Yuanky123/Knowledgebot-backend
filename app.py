@@ -233,9 +233,13 @@ def on_timeout_callback(timeout_info=None):
     timer_manager.update_activity()
     # 对比new_comments和Current_context['comments']，如果new_comments和Current_context['comments']数量相同，说明没有新的评论，则进行超时干预
     if len(new_comments) == len(Current_context['comments']):
+        # [IMPORTANT] add an attribute 'new_added_comment' to current context (to fix bugs caused by delayed update of context['comments'])
+        Current_context['new_added_comment'] = []
+
         # 如果时间阶段耐心值耗尽，则进行超时干预
         print("Time out and no new comments. Patience -1 ...")
         Current_context['time_patience'] = Current_context['time_patience'] - 1
+        print(f"⏰: Time Patience: {Current_context['time_patience']} | Discussion Patience: {Current_context['discussion_patience']}")
         if Current_context['time_patience'] <= 0:
 
             # 恢复时间阶段耐心值
@@ -273,18 +277,25 @@ def on_timeout_callback(timeout_info=None):
         new_added_comments_phase = analyzer.analyze_phase(Current_context, new_added_comments)
         for i in range(len(new_added_comments)):
             new_added_comments[i]['message_phase'] = new_added_comments_phase[i]
+
+        # [IMPORTANT] add an attribute 'new_added_comment' to current context (to fix bugs caused by delayed update of context['comments'])
+        Current_context['new_added_comment'] = new_added_comments
+
         Current_context['graph'] = analyzer.add_to_graph(Current_context, new_added_comments)
 
         # 步骤2：检查当前应该协助的阶段
         analysis_result = analyzer.check_discussion_sufficiency(Current_context, new_added_comments)
         # Current_context['is_sufficient'] = analysis_result['is_sufficient']
         Current_context['comments'] = Current_context['comments'] + new_added_comments
+        # [IMPORTANT] reset the new_added_comment to empty list
+        Current_context['new_added_comment'] = []
         Current_context['discussion_patience'] = analysis_result['patience']
         Current_context['phase'] = analysis_result['phase']
         update_context_to_database()
 
         # 步骤3：决定是否需要干预和如何干预
         # 如果耐心值耗尽，则进行促进干预，不然不干预
+        print(f"⏰: Time Patience: {Current_context['time_patience']} | Discussion Patience: {Current_context['discussion_patience']}")
         if Current_context['discussion_patience'] <= 0:
             print("Discussion patience out. Start intervention...")
             # 进行超时干预

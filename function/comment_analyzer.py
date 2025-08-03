@@ -10,6 +10,7 @@ import arg
 import json
 import traceback
 from .utils import build_parent_chain, extract_json_from_markdown, extract_mentioned_user, formulate_tree, list_tree_ids
+from pprint import pprint
 
 # Configure OpenAI client
 client = OpenAI(
@@ -94,16 +95,16 @@ class CommentAnalyzer:
                     parent_comment_phase = None
                     for c in new_comments:
                         if c.get('id') == parent_comment_id:
-                            parent_comment_phase = c.get('message_phase')
+                            parent_comment_phase = c.get('message_phase', None)
                             break
                     if parent_comment_phase is None:
                         for c in context.get('comments', []):
                             if c.get('id') == parent_comment_id:
-                                parent_comment_phase = c.get('message_phase')
+                                parent_comment_phase = c.get('message_phase', None)
                                 break
                     if parent_comment_phase is None:
                         parent_comment_phase = 0
-                    final_prediction_phase = min(model_prediction_phase, parent_comment_phase)
+                    final_prediction_phase = max(model_prediction_phase, parent_comment_phase) # fix bug: min -> max
                 
             new_comments[i]['message_phase'] = final_prediction_phase
             new_comments_phase.append(final_prediction_phase)
@@ -114,6 +115,7 @@ class CommentAnalyzer:
 
 
     def analyze_connection_batch(self, context, new_comment, candidate_comments):
+        print(f"🟢: In function [analyze_connection_batch]")
         """
         Analyze connection between new comment and multiple candidate comments, return the best match
         """
@@ -187,32 +189,33 @@ class CommentAnalyzer:
             
             # Extract the response
             result_text = response.choices[0].message.content.strip()
-            print("Analyzing batch connection for comments...")
-            print("New comment: ", new_comment.get('body', 'N/A'))
-            print("Candidates: ", candidate_text)
+            print(f"[analyze_connection_batch]🐞: Analyzing batch connection for comments...")
+            print(f"[analyze_connection_batch]🐞: New comment: {new_comment.get('body', 'N/A')}")
+            print(f"[analyze_connection_batch]🐞: Candidates: {candidate_text}")
+            print(f"[analyze_connection_batch]🐞: Result: {result_text}")
             
             try:
                 result_json = json.loads(extract_json_from_markdown(result_text))
-                best_match_index = result_json.get('best_match_index', 0)
+                best_match_index = result_json.get('best_match_index', 0) - 1 # 1-based index to 0-based index
                 connection_score = result_json.get('connection_score', 0)
                 reason = result_json.get('reason', 'No reason provided')
-                print("Best match index: ", best_match_index)
-                print("Connection score: ", connection_score)
-                print("Reason: ", reason)
-                print('-' * 10)
+                print(f"[analyze_connection_batch]🐞: Best match index: {best_match_index}\n\t\tcomment: {candidate_comments[best_match_index].get('body', 'N/A')}")
+                print(f"[analyze_connection_batch]🐞: Connection score: {connection_score}")
+                print(f"[analyze_connection_batch]🐞: Reason: {reason}")
+                print(f"[analyze_connection_batch]🐞: {'-' * 10}")
                 
                 # Return the best matching comment if score is above threshold
-                if best_match_index > 0 and connection_score >= 5:
+                if best_match_index >= 0 and connection_score >= 5:
                     return candidate_comments[best_match_index]
                 else:
                     return None
                     
             except json.JSONDecodeError as e:
-                print(f"Error parsing JSON response: {e}")
+                print(f"[analyze_connection_batch]🐞: Error parsing JSON response: {e}")
                 return None
             
         except Exception as e:
-            print(f"Error calling ChatGPT API: {e}")
+            print(f"[analyze_connection_batch]🐞: Error calling ChatGPT API: {e}")
             return None
 
     
@@ -276,6 +279,7 @@ class CommentAnalyzer:
             return False
 
     def extract_argument_and_counterargument(self, context, tree_id):
+        print(f"🟢: In function [extract_argument_and_counterargument], tree_id = {tree_id}")
         """
         Use GPT to extract the main argument and the main counterargument from a tree.
         Returns a dict with 'argument' and 'counterargument' fields, each containing 'text' and 'explanation'.
@@ -300,9 +304,14 @@ class CommentAnalyzer:
             "argument": {{"text": "...", "explanation": "..."}},
             "counterargument": {{"text": "", "explanation": "No counterargument found."}}
         }}
+
+        Note that:
+        - Providing alternative perspectives is not viewed as a counterargument. We only consider counterarguments that explicitly refute the argument.
+
         Discussion:
         {context_text}
         """
+        print(f"[extract_argument_and_counterargument]🐞: Dicussion (context_text) = {context_text}")
         response = client.chat.completions.create(
             model=arg.OPENAI_MODEL,
             messages=[
@@ -321,6 +330,7 @@ class CommentAnalyzer:
                 "argument": {"text": "", "explanation": "No argument found."},
                 "counterargument": {"text": "", "explanation": "No counterargument found."}
             }
+        print(f"[extract_argument_and_counterargument]🐞: Argument and counterargument analysis result = {result_json}")
         return result_json
 
     def score_counterargument(self, context, tree_id, argument, counterargument):
@@ -859,6 +869,8 @@ class CommentAnalyzer:
         return return_result
 
     def add_to_graph(self, context, new_comments):
+        print(f"🟢: In function [add_to_graph], new_comments (len={len(new_comments)}) = {new_comments}")
+
         graph = context['graph']
         nodes = graph.get('nodes', [])
         edges = graph.get('edges', [])
@@ -889,6 +901,10 @@ class CommentAnalyzer:
                 node = {'id': cid, 'phase': phase, 'tree_id': []}
                 nodes.append(node)
                 node_id_map[cid] = node
+
+            print(f"[add_to_graph]🐞: newest node_id_map = ")
+            pprint(node_id_map)
+            
             # PHASE 1: assign new tree id, no edge, no tree update
             if phase == 1:
                 max_tree_id += 1
@@ -896,7 +912,7 @@ class CommentAnalyzer:
                 continue
             
             # PHASE 2: add edges, then update tree ids efficiently
-            if phase == 2:
+            elif phase == 2:
                 connected_tree_ids = set()
                 parent_id = comment.get('parent_comment_id')
                 
@@ -931,7 +947,8 @@ class CommentAnalyzer:
                         # Get most recent 3 comments by this user
                         user_comments.sort(key=lambda x: x.get('id', 0), reverse=True)
                         candidate_comments = user_comments[:3]
-                        print(f"Found {len(candidate_comments)} recent comments by mentioned user @{mentioned_user}")
+                        print(f"[add_to_graph]🐞: Found {len(candidate_comments)} recent comments by mentioned user @{mentioned_user}")
+                        print(f"[add_to_graph]🐞: candidate_comments = {candidate_comments}")
                     else:
                         # Get most recent 5 comments
                         recent_comments = []
@@ -947,16 +964,21 @@ class CommentAnalyzer:
                         # Sort by ID (assuming higher ID = more recent) and get top 5
                         recent_comments.sort(key=lambda x: x.get('id', 0), reverse=True)
                         candidate_comments = recent_comments[:5]
-                        print(f"Analyzing against {len(candidate_comments)} most recent comments")
+                        print(f"[add_to_graph]🐞: Analyzing against {len(candidate_comments)} most recent comments")
+                        print(f"[add_to_graph]🐞: candidate_comments = {candidate_comments}")
                     
                     # Use batch analysis to find best connection
                     if candidate_comments:
                         best_match = self.analyze_connection_batch(context, comment, candidate_comments)
+                        print(f"[add_to_graph]🐞: best_match comment = {best_match}")
                         if best_match:
                             best_match_id = best_match.get('id')
+                            print(f"[add_to_graph]🐞: best_match_(comment)_id = {best_match_id}")
                             if not any(e for e in edges if (e['source'] == best_match_id and e['target'] == cid) or (e['source'] == cid and e['target'] == best_match_id)):
                                 edges.append({'source': best_match_id, 'target': cid})
+                                print(f"[add_to_graph]🐞: node_id_map[best_match_id] = {node_id_map[best_match_id]}")
                                 best_match_tree_ids = node_id_map[best_match_id].get('tree_id', [])
+                                print(f"[add_to_graph]🐞: best_match_tree_ids = {best_match_tree_ids}")
                                 if isinstance(best_match_tree_ids, int):
                                     best_match_tree_ids = [best_match_tree_ids]
                                 for btid in best_match_tree_ids:
@@ -985,9 +1007,12 @@ class CommentAnalyzer:
                                 n['tree_id'] = list(sorted(set(tids)))
         graph['nodes'] = nodes
         graph['edges'] = edges
+        print(f"[add_to_graph]🐞: before exit, graph['nodes'] = {graph['nodes']}")
+        print(f"[add_to_graph]🐞: before exit, graph['edges'] = {graph['edges']}")
         return graph
 
     def check_discussion_sufficiency(self, context, new_comments):
+        print(f"🟢: In function [check_discussion_sufficiency]")
         """检查当前阶段讨论是否充分"""
         current_phase = context['phase']
         # current_is_sufficient = context['is_sufficient']
@@ -1014,7 +1039,7 @@ class CommentAnalyzer:
                 for comment in context['comments']:
                     if comment.get('message_phase', -1) == 1:
                         phase_1_comments += 1
-                print(f"🐞: phase_1_comments = {phase_1_comments}")
+                print(f"[check_discussion_sufficiency]🐞: phase_1_comments = {phase_1_comments}")
                 if phase_1_comments >= self.phase_criteria['initiation']['min_comments']:
                     print(f"******************** Enter PHASE 2 ********************")
                     new_discussion_phase = 2
@@ -1066,21 +1091,39 @@ class CommentAnalyzer:
                                 "explanation": "No counterargument found"
                             }
                         context['graph']['tree_scores'][tid] = score
-                        # Either no counterargument or has all dimensions of counterargument
+                        # # Sufficiency check: Either no counterargument or has all dimensions of counterargument
+                        # if not (
+                        #     score.get('evidence', {}).get('score', 0) == 1 and
+                        #     score.get('reasoning', {}).get('score', 0) == 1 and
+                        #     score.get('qualifier', {}).get('score', 0) == 1 and (
+                        #         score.get('counterargument', {}).get('score', 0) == 0 or 
+                        #         (
+                        #             score.get('counterargument', {}).get('score', 0) == 1 and
+                        #             score.get('counterargument_evidence', {}).get('score', 0) == 1 and
+                        #             score.get('counterargument_reasoning', {}).get('score', 0) == 1 and
+                        #             score.get('counterargument_qualifier', {}).get('score', 0) == 1
+                        #         )
+                        #     )
+                        # ):
+                        #     all_trees_full = False
+                        # sufficiency check: Two of the three dimensions of an argument are present # TODO: this is loose
                         if not (
-                            score.get('evidence', {}).get('score', 0) == 1 and
-                            score.get('reasoning', {}).get('score', 0) == 1 and
-                            score.get('qualifier', {}).get('score', 0) == 1 and (
-                                score.get('counterargument', {}).get('score', 0) == 0 or 
-                                (
-                                    score.get('counterargument', {}).get('score', 0) == 1 and
-                                    score.get('counterargument_evidence', {}).get('score', 0) == 1 and
-                                    score.get('counterargument_reasoning', {}).get('score', 0) == 1 and
-                                    score.get('counterargument_qualifier', {}).get('score', 0) == 1
-                                )
-                            )
+                            # argument + counterargument is present
+                            # ( # only argument is present, in this case we need 2 of the 3 dimensions to be present
+                                score.get('evidence', {}).get('score', 0) + score.get('reasoning', {}).get('score', 0) + score.get('qualifier', {}).get('score', 0) >= 2
+                            # ) or (
+                            #     # argument + counterargument is present, in this case we need 
+                            #     score.get('argument', {}).get('score', 0) == 1 and
+                            # )
                         ):
                             all_trees_full = False
+                            print(f"[check_discussion_sufficiency]🐞: Tree {tid} is not full")
+
+
+                        print(f"[check_discussion_sufficiency]🐞: Tree {tid}\tArguments: ") #{context['graph']['arguments'][tid]}\n\tTree scores: {context['graph']['tree_scores'][tid]}")
+                        pprint(context['graph']['arguments'][tid])
+                        print(f"[check_discussion_sufficiency]🐞: Tree {tid}\tTree scores: ")
+                        pprint(context['graph']['tree_scores'][tid])
                     if all_trees_full:
                         print(f"******************** Enter PHASE 3 ********************")
                         new_discussion_phase = 3

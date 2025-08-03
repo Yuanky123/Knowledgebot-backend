@@ -32,8 +32,7 @@ def formulate_tree(context, tree_id):
         return False
 
     # Gather all comments in the tree as context (author, body, parent_comment_id only)
-    all_comments = context.get('comments', [])
-    id_to_comment = {c.get('id'): c for c in all_comments}
+    id_to_comment = {c.get('id'): c for c in context.get('comments', []) + context.get('new_added_comment', [])}
     tree_comments = []
     for n in tree_nodes:
         c = id_to_comment.get(n['id'])

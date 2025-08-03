@@ -1,4 +1,5 @@
 # 一些能够被fine-tuned LLM 正确识别的comment测试用例
+post = "How can we make people living in city happy?"
 
 test_comments = [
     # Initiation, argument 1
