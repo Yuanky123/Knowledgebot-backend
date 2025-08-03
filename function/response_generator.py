@@ -33,11 +33,13 @@ class ResponseGenerator:
             Post Body: {context['post']['body']}
             '''
 
-        if current_phase == 1:
+        if current_phase == 1 or current_phase == 0:
 
             phase_1_comments = [comment for comment in context['comments'] if comment.get('message_phase', 1) == 1]
-
-            phase_1_comments_text = '\n'.join([f"Comment {i+1}: {comment['body']}" for i, comment in enumerate(phase_1_comments)])
+            if len(phase_1_comments) == 0:
+                phase_1_comments_text = "(No comments yet)"
+            else:
+                phase_1_comments_text = '\n'.join([f"Comment {i+1}: {comment['body']}" for i, comment in enumerate(phase_1_comments)])
 
             parent_comment_id = None
             prompt = f'''
@@ -74,12 +76,12 @@ class ResponseGenerator:
 
             if intervention_style == 0: # telling
                 intervention_message = strategy.format(
-                    existing_aspects=', '.join(existing_aspects),
+                    existing_aspects="We have discussed " + ', '.join(existing_aspects) if len(existing_aspects) > 0 else "Seems like we have not discussed much yet",
                     new_angle=new_angle
                 )
             elif intervention_style == 1: # selling
                 intervention_message = strategy.format(
-                    existing_aspects=', '.join(existing_aspects),
+                    existing_aspects="We have discussed " + ', '.join(existing_aspects) if len(existing_aspects) > 0 else "Seems like we have not discussed much yet",
                     new_angle=new_angle,
                     benefits=reason.replace('Because ', '')
                 )
@@ -116,6 +118,7 @@ class ResponseGenerator:
 
         elif current_phase == 2: # phase 2: exploration
             # select a tree (context['graph']['tree_scores'][tid]) where either the argument is not sufficient or the counterargument is not sufficient
+            target_argument = None
             for tid in random.sample(list(context['graph']['tree_scores'].keys()), 1):
                 score = context['graph']['tree_scores'][tid]
                 if score.get('evidence', {}).get('score', 0) == 0:
@@ -138,11 +141,15 @@ class ResponseGenerator:
                     missing_support = 'qualifier'
                 else:
                     continue
+            if target_argument == None:
+                intervention_message = "[Error: in phase 2, no target argument found]" # TODO: 最后测试时最好删掉
             # Not all arguments are sufficient in phase 2. So we should eventually find one that is insufficient.
             # get parent_comment_id from tid + argument/counterargument
             parent_comment_id = None
             argument_text = target_argument['text']
             for comment in context['comments']:
+                if comment['body'] is None:
+                    continue
                 if argument_text in comment['body']:
                     parent_comment_id = comment['id']
                     break

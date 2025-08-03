@@ -9,6 +9,7 @@ class InterventionManager:
     def __init__(self, strategies):
         self.strategies = strategies
         self.strategy_names = {
+            0: 'initiation',
             1: 'initiation',
             2: 'exploration',
             3: 'negotiation',

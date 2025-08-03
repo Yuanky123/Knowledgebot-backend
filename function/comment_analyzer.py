@@ -65,7 +65,7 @@ class CommentAnalyzer:
         
         new_comments_phase = []
         for i in range(len(new_comments)):
-            print(f"**** Analyzing comment {i}: {new_comments[i]['body']}")
+            print(f"**** Analyzing comment {new_comments[i]['id']}: {new_comments[i]['body']}")
             messages = [
                 {"role": "system", "content": "You are a professional data classifier. Your task is, in a online knowledge community setting, given a comment in this community, decide, whether the it is a knowledge comment or not, and if it is, which knowledge co-construction stage the comment belongs to. \n\n# Classification of the comments:\nThe classes are: \n0. Non-knowledge comment\n    Typical examples: Joking around or off-topic banter; only expressing yes/no/thanks without any further opinion (or insufficient expression of opinion, e.g., \"I have never considered this aspect before\"); purely expressing emotions (even in a calm manner)/complaints; personal attacks; pure sarcasm.\n1. Initiation: Multiple viewpoints are proposed in the comments, but there is no interaction yet.\n    Typical examples: Introduces an entirely new topic, question or fact.\n2. Exploration: Referencing others' viewpoints, adding examples or personal experiences to existing ideas, asking and answering related questions — overall, the content becomes more in-depth.\n    Typical examples: Supporting or refuting a previous viewpoint; deepening/adding to/restating previous ideas; providing theoretical support for earlier points; raising variations or complementary questions to earlier ones; probing the details or logic of earlier viewpoints; pointing out logical fallacies in earlier ideas.\n3. Negotiation: Integration of viewpoints, defining scopes, clarifying differences and common ground, moving toward structured negotiation, and attempting to reach mechanisms or solutions.\n    Typical examples: Defining the scope of multiple viewpoints; analyzing differences and similarities among them; integrating multiple earlier ideas into one comprehensive viewpoint; proposing higher-level mechanisms/solutions by synthesizing several perspectives.\n4. Integration: Establishing clear consensus, summarizing principles, applying knowledge, and reflecting on the co-constructed outcomes.\n    Typical examples: Generalizing a shared principle or insight from earlier ideas; Applying a synthesized understanding to a new problem or situation; Reflecting on the learning process or how the discussion has advanced collective understanding; Proposing directions for future discussion based on established consensus.\n(Classes 1-4 comprise the knowledge co-construction stages.)\n\n# Tips\n- You can use some linguistic cues to help you classify the comments, especially distinguishing between Initiation (class 1) and Exploration (class 2). Below are definitions and examples for each cue:\n    - Raising questions: Comments that include direct or rhetorical questions, often seeking clarification, elaboration, or challenging previous statements.\n        - Examples: \"Why cannot ...?\", \"Right?\", \"So ...?\"\n    - Refuting or supporting others' viewpoints: Comments that explicitly agree or disagree with previous statements, or reinforce/contradict earlier points.\n        - Examples: \"Yes.\", \"No, it's not ...\", \"Exactly, it is ...\", \"But ...\", \"Or ...\"\n    - Mentioning others: Comments that refer directly to another participant’s statement or perspective, often using phrases like \"what you said\" or \"do you know ...\". \n        - Note: Not all uses of \"you\" are mentions of others. Only when \"you\" refers to another participant’s comment or cannot be inferred as generic should it be considered a mention.\n        - Examples: \"I agree with what you said.\", \"Do you know if ...?\"\n    - Explaining previous comments: Comments that provide reasons, justifications, or clarifications for earlier statements, often using explanatory phrases.\n        - Examples: \"It's because ...\", \"The reason is ...\"\n    - Abrupt numbers or concepts: Comments that introduce numbers, statistics, or concepts that are contextually linked to previous discussion, rather than being standalone facts.\n        - Examples: \"500 is not a precise estimate\", \"The XXX model is ...\" (where \"XXX\" refers to something mentioned earlier)\n    - Unclear references: Comments that use pronouns or comparative terms whose meaning depends on previous context, making them semantically dependent on earlier comments.\n        - Examples: \"It's better than this.\", \"That is ...\", \"This approach ...\"\n    - Explicit quote mark: Comments that directly quote previous statements, often using symbols like \">\" or quotation marks to indicate a reference to earlier content.\n        - Examples: \"> ...\", '\"As mentioned above, ...\" '\n    - Comparison with only one side: Comments that make a comparison but only provide detail for one side, implying the other side is understood from previous context.\n        - Examples: \"This is better than that.\", \"Similarly, ...\"\n    - The linguistic cues above are not exhaustive, and a comment may contain more than one cue. The presence of any of these cues is often enough to classify a comment as Exploration (class 2). Always consider the whole comment and its context.\n    - In summary, if the comment seems to be semantically dependent on previous comments (e.g., refuting or supporting others' viewpoints), it is likely an Exploration comment (class 2). If it stands alone, stating an independent viewpoint, it is likely to be an Initiation comment (class 1).\n\n\nYou should only output the class number. For example, if the comment belongs to class 1, you should output 1."},
                 {"role": "user", "content": f"'comment': '{new_comments[i]['body']}'"}
@@ -78,7 +78,7 @@ class CommentAnalyzer:
                     messages=messages,
                     model="mistralai/Mistral-7B-Instruct-v0.3"
                 )
-                print(f"****************** Response: {response.choices[0].message.content}")
+                print(f"Comment Classifier Response: {response.choices[0].message.content}")
                 try:
                     model_prediction_phase = int(response.choices[0].message.content)
                 except:
@@ -882,7 +882,6 @@ class CommentAnalyzer:
         for comment in new_comments:
             cid = comment['id']
             phase = comment.get('message_phase', 0)
-            context['comments'].append(comment)
             if phase in [0, 3, 4]:
                 continue
 
@@ -999,7 +998,8 @@ class CommentAnalyzer:
         # new_is_sufficient = current_is_sufficient
         while current_phase != 5:
             if current_phase == 0:
-                if len(context['comments']) > 0:
+                if len(new_comments) > 0:
+                    print(f"******************** Enter PHASE 1 ********************")
                     new_discussion_phase = 1
                     new_discussion_patience = arg.MAX_PATIENCE
                 else:
@@ -1010,12 +1010,13 @@ class CommentAnalyzer:
                 #判断阶段一的评论是不是足够多
                 phase_1_comments = 0
                 for comment in new_comments:
-                    if comment.get('message_phase', 1) == 1:
+                    if comment.get('message_phase', -1) == 1:
                         phase_1_comments += 1
                 for comment in context['comments']:
-                    if comment.get('message_phase', 1) == 1:
+                    if comment.get('message_phase', -1) == 1:
                         phase_1_comments += 1
                 if phase_1_comments >= self.phase_criteria['initiation']['min_comments']:
+                    print(f"******************** Enter PHASE 2 ********************")
                     new_discussion_phase = 2
                     new_discussion_patience = arg.MAX_PATIENCE
                 else:
@@ -1081,6 +1082,7 @@ class CommentAnalyzer:
                         ):
                             all_trees_full = False
                     if all_trees_full:
+                        print(f"******************** Enter PHASE 3 ********************")
                         new_discussion_phase = 3
                         new_discussion_patience = arg.MAX_PATIENCE
                     else:
@@ -1126,6 +1128,7 @@ class CommentAnalyzer:
                             all_ok = True
                             break
                     if all_ok:
+                        print(f"******************** Enter PHASE 4 ********************")
                         new_discussion_phase = 4
                         new_discussion_patience = arg.MAX_PATIENCE
                         # TODO: 进入阶段四，准备consensus
