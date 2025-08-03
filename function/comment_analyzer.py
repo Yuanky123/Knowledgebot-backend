@@ -35,11 +35,11 @@ class CommentAnalyzer:
         
         self.phase_criteria = {
             'initiation': {
-                'min_comments': 10,
+                'min_comments': 3,
                 'description': '多样化观点外化，建立讨论基础'
             },
             'exploration': {
-                'min_comments': 10,
+                'min_comments': 10, # TODO: Unused variable!!
                 'description': '深入探讨，展开多维度分析'
             },
             'negotiation': {
@@ -47,7 +47,7 @@ class CommentAnalyzer:
                 'description': '处理分歧，寻求共识'
             },
             'co_construction': {
-                'min_comments': 10,
+                'min_comments': 3, # TODO: Unused variable!!
                 'description': '共同构建知识，整合观点'
             }
         }
@@ -56,10 +56,9 @@ class CommentAnalyzer:
 
     def analyze_phase(self, context, new_comments):
         """判断当前评论的阶段"""
-        # 目前使用简单逻辑，未来可以集成大语言模型
         # 使用大语言模型判断当前评论的阶段
-        # 输入：当前评论
-        # 输出：当前评论的阶段，并返回给前端
+        # 输入：当前新出现的评论list
+        # 输出：当前评论的阶段(list)，并返回给前端
 
         # new_comments_phase = [1] * len(new_comments)
         
@@ -1015,6 +1014,7 @@ class CommentAnalyzer:
                 for comment in context['comments']:
                     if comment.get('message_phase', -1) == 1:
                         phase_1_comments += 1
+                print(f"🐞: phase_1_comments = {phase_1_comments}")
                 if phase_1_comments >= self.phase_criteria['initiation']['min_comments']:
                     print(f"******************** Enter PHASE 2 ********************")
                     new_discussion_phase = 2
