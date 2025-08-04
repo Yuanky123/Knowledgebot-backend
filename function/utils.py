@@ -21,7 +21,7 @@ def build_parent_chain(comment, id_to_comment, depth=0, max_depth=1):
     if parent_id is not None and parent_id in id_to_comment:
         parent = id_to_comment[parent_id]
         parent_str = build_parent_chain(parent, id_to_comment, depth+1, max_depth)
-        return f"\n    (In reply to: Author: {parent.get('author_name', 'Unknown')}, Body: {parent.get('body', 'No content')}{parent_str})"
+        return f"\n    (In reply to: Author: {parent.get('author_name', 'Unknown')}, Body: {parent.get('body', 'No content')}{parent_str})\n\t"
     return ''
 
 def formulate_tree(context, tree_id):
