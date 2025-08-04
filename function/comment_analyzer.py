@@ -641,12 +641,16 @@ class CommentAnalyzer:
         # Return { 1: { 'score': 0, 'reason': '...' } , 2: { 'score': 1, 'reason': '...' } , ... }
         
         Prompt = f"""
-        You are evaluating the degree of consensus of a conflict, based on the comments related to this conflict.
+        You are evaluating the degree and type of consensus of a conflict, based on the comments related to this conflict.
         The input is a list of conflicts and each conflict has a list of related comments:
         {intra_tree_conflicts}
 
-        You need to score the degree of consensus of each conflict and give a reason for the scoring.
-        The score is from 0 to 2 (0 = no consensus, 1 = partial consensus, 2 = complete consensus).
+        You need to provide a score that indicates the degree and type of the consensus of each conflict.
+        The score is from 0 to 3. Each score has a type of consensus:
+        0: No consensus: there are no consensus of any type reached, or the comments are not related to the conflict.
+        1: Clarified disagreement: the comments indicate that it is impossible to reach agreement, and the area of disagreement is clarified.
+        2: Conditional agreement: the comments indicate that agreementis reached, but different aspects apply under different conditions.
+        3: Full agreement: the comments indicate that agreement is reached under all circumstances.
         The reason is a brief explanation for the scoring.
 
         Note:
@@ -655,13 +659,13 @@ class CommentAnalyzer:
         Respond with a JSON object in this exact format:
         [
             {{
-            "conflict_index": 0 | 1 | 2 | ..., # the index of the conflict in the list
-            "score": 0 | 1 | 2, # the score of the conflict
+            "conflict_index": 0 | 1 | 2 ..., # the index of the conflict in the list
+            "score": 0 | 1 | 2 | 3 , # the score of the conflict
             "reason": "brief explanation"
             }},
             {{
             "conflict_index": 0 | 1 | 2 | ..., # the index of the conflict in the list
-            "score": 0 | 1 | 2, # the score of the conflict
+            "score": 0 | 1 | 2 | 3, # the score of the conflict
             "reason": "brief explanation"
             }},
         ]
