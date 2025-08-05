@@ -15,6 +15,9 @@ test_comments = [
     "Yes. This shows that even well-developed systems can struggle to provide a smooth commuting experience.",
     "This is especially true in cities where infrastructure is aging or underfunded.",
 
+    # Negotiation: phase 3
+    "You're right that even the best public transport systems aren't perfect—delays and overcrowding do cause stress. But I think both sides actually agree on the core issue: commuting time and quality affect urban happiness. Maybe the focus shouldn't just be on having public transport, but on improving its reliability, comfort, and accessibility.",
+
     # Initiation, argument 2
     "I think we should enforce strict labor laws so that people don't overwork.",
     # Exploration: evidence, reasoning, qualifier

@@ -252,8 +252,12 @@ class ResponseGenerator:
             # select unsolved conflict: first intra-tree, then inter-tree
             target_tree = None
             for tid in random.sample(list(context['graph']['conflicts']['intra_tree'].keys()), len(context['graph']['conflicts']['intra_tree'])):
-                if context['graph']['conflicts']['intra_tree'][tid].get('consensus_rating', {}).get('score', 1) == 0:
+                print(f"[generate_custom_response]🐞: Checking intra-tree conflict {tid} ...")
+                pprint(context['graph']['conflicts']['intra_tree'][tid])
+                if context['graph']['conflicts']['intra_tree'][tid].get('counterargument', "") != "" and \
+                    context['graph']['conflicts']['intra_tree'][tid].get('consensus_rating', {}).get('score', 1) == 0:
                     target_tree = context['graph']['conflicts']['intra_tree'][tid]
+                    print(f"[generate_custom_response]🐞: Found unresolved intra-tree conflict {tid}!")
                     break
             if target_tree != None: # find a intra-tree conflict
                 # first generate: under_addressed_conflicts, benefits
@@ -324,6 +328,7 @@ class ResponseGenerator:
                 else:
                     raise ValueError(f"Invalid intervention style: {intervention_style}")
             else: # inter-tree conflict
+                print(f"[generate_custom_response]🐞: No intra-tree conflict found, checking inter-tree conflict ...")
                 dimensions = context['graph']['conflicts']['inter_tree']['dimensions']
                 under_addressed_arguments = []
                 for tid in dimensions:
