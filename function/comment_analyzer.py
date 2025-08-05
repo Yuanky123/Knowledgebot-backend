@@ -692,6 +692,57 @@ class CommentAnalyzer:
             return_result[each_evaluation['conflict_index']] = { 'score': each_evaluation['score'], 'reason': each_evaluation['reason'] }
         return return_result
 
+    def determine_consensus_of_inter_conflicts(self, inter_tree_conflicts):
+        # TODO: Implemenet this function: for each conflict get all phase 3 comments related to this conflict and rate the degree of consensus.
+        # Params: inter_tree_conflicts: all inter tree conflicts. { 'dimensions': { 1: {'argument': '...', 'comments': [ {comment_1}, {comment_2}, ... ] } , 2: {'argument': '...', 'comments': [ {comment_1}, {comment_2}, ... ] } , ... }, 'comments': [ {comment_1}, {comment_2}, ... ] }
+        # Score from 0 to 2 (0 = no consensus, 1 = partial consensus, 2 = complete consensus) and let GPT give a reason for the scoring.
+        # Return { 1: { 'score': 0, 'reason': '...' } , 2: { 'score': 1, 'reason': '...' } , ... }
+        
+        Prompt = f"""
+        You are evaluating the degree and type of consensus of a conflict, based on the comments related to this conflict.
+        The input is different dimensions of the conflict, and each dimension has a list of related comments:
+        {inter_tree_conflicts['dimensions']}
+
+        You need to provide a score that indicates the degree and type of the consensus of this conflict.
+        The score is from 0 to 3. Each score has a type of consensus:
+        0: No consensus: there are no consensus of any type reached, or the comments are not related to the conflict.
+        1: Clarified disagreement: the comments indicate that it is impossible to reach agreement, and the area of disagreement is clarified.
+        2: Conditional agreement: the comments indicate that agreementis reached, but different aspects apply under different conditions.
+        3: Full agreement: the comments indicate that agreement is reached under all circumstances.
+        The reason is a brief explanation for the scoring.
+
+        Note: If any of the dimensions have no comments, the score is 0 and the reason is "The comments do not cover all dimensions of the conflict".
+
+        Respond with a JSON object in this exact format:
+        {{
+            "conflict_index": 0 | 1 | 2 ..., # the index of the conflict in the list
+            "score": 0 | 1 | 2 | 3 , # the score of the conflict
+            "reason": "brief explanation"
+        }}
+        """
+
+        response = client.chat.completions.create(
+            model=arg.OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
+                {"role": "user", "content": Prompt}
+            ],
+            max_tokens=400,
+            temperature=0.1
+        )
+
+        result_text = response.choices[0].message.content.strip()
+        try:
+            result_json = json.loads(extract_json_from_markdown(result_text))
+        except Exception as e:
+            print(f"Error parsing GPT response for conflict assignment: {e}")
+            result_json = []
+        return_result = {}
+        for each_evaluation in result_json:
+            return_result[each_evaluation['conflict_index']] = { 'score': each_evaluation['score'], 'reason': each_evaluation['reason'] }
+        return return_result
+
+
     def determine_coverage_of_inter_conflicts(self, inter_tree_conflicts):
         # TODO: Implemenet this function: get all phase 3 comments related to this conflict and for each dimension determine whether the phase 3 comments cover it.
         # Params: inter_tree_conflicts: all inter tree conflicts. { 'dimensions': { 1: {'argument': '...', 'comments': [ {comment_1}, {comment_2}, ... ] } , 2: {'argument': '...', 'comments': [ {comment_1}, {comment_2}, ... ] } , ... }, 'comments': [ {comment_1}, {comment_2}, ... ] }
@@ -1167,13 +1218,22 @@ class CommentAnalyzer:
                     for tid, rating in inter_conflicts_coverage_rating.items():
                         context['graph']['conflicts']['inter_tree']['dimensions'][tid]['coverage_rating'] = rating
                     
-                    # Advance phase only if all intra-tree conflicts have consensus score >= 1 and all inter-tree conflict dimensions have score == 1
+                    # If all ratings are 1, do self.determine_consensus_of_inter_conflicts
+                    if all(rating['score'] == 1 for rating in inter_conflicts_coverage_rating.values()):
+                        inter_conflicts_consensus_rating = self.determine_consensus_of_inter_conflicts(context['graph']['conflicts']['inter_tree'])
+                        for tid, rating in inter_conflicts_consensus_rating.items():
+                            context['graph']['conflicts']['inter_tree']['consensus_rating'] = rating
+                    
+                    
+                    # Advance phase only if all intra and inter-tree conflicts have consensus score >= 1 and all inter-tree conflict dimensions have score == 1
                     all_ok = True
                     for tid in list_tree_ids(context):
                         # If any of the trees have unresolved conflicts, stay in phase 3
                         if context['graph']['conflicts']['intra_tree'][tid]['consensus_rating']['score'] < 1 or context['graph']['conflicts']['inter_tree']['dimensions'][tid]['coverage_rating']['score'] < 1:
-                            all_ok = True
+                            all_ok = False
                             break
+                    if context['graph']['conflicts']['inter_tree']['consensus_rating']['score'] < 1:
+                        all_ok = False
                     if all_ok:
                         print(f"******************** Enter PHASE 4 ********************")
                         new_discussion_phase = 4
