@@ -465,9 +465,10 @@ class CommentAnalyzer:
                 'id': c['id'],
                 'body': c['body'],
                 'author_name': c['author_name']
-            } for c in context.get('comments', []) if c.get('message_phase', 0) == phase]
+            } for c in context.get('comments', [])+context.get('new_added_comment', []) if c.get('message_phase', 0) == phase]
 
     def map_phase3_comments_to_conflicts(self, phase3_comments, intra_tree_conflicts, inter_tree_conflicts):
+        print(f"🟢: In function [map_phase3_comments_to_conflicts]")
         # TODO: Implement this function: compare each phase 3 comment against all tree comments. 
         # Params: phase3_comments: all phase 3 comments
         # intra_tree_conflicts: all intra tree conflicts. { 1: {'argument': '...', 'counterargument': '...' }, 2: {'argument': '...', 'counterargument': '...' }, ... }
@@ -477,14 +478,30 @@ class CommentAnalyzer:
         # I suggest only query GPT once and let GPT rate all connections since it might hallucinate and give all 1 scores if you compare with only one conflict each time.
         # Return { "intra_tree": { 1: [ {comment_1}, {comment_2}, ... ] , 2: [ {comment_1}, {comment_2}, ... ] , ... } , "inter_tree": [ {comment_1}, {comment_2}, ... ] }
         # 
+        
+        # remove intra_tree_conflicts where the counterargument is empty (i.e. no conflicts at all)
+        intra_tree_conflicts_reduced = {k: v for k, v in intra_tree_conflicts.items() if v.get('counterargument', '') != ''}
+
+        print(f"[map_phase3_comments_to_conflicts]🐞: phase3_comments = ")
+        pprint(phase3_comments)
+        print(f"[map_phase3_comments_to_conflicts]🐞: intra_tree_conflicts_reduced = ")
+        pprint(intra_tree_conflicts_reduced)
+        print(f"[map_phase3_comments_to_conflicts]🐞: inter_tree_conflicts = ")
+        pprint(inter_tree_conflicts)
 
         Prompt = f"""
             You are analyzing comments in a discussion to determine which conflicts they relate to. 
             Comments typically involve negotiation, integration of viewpoints, and attempting to reach consensus.
 
-            Available Conflicts:
+            You will be given a list of existing conflicts (including two types: intra-tree conflicts and inter-tree conflicts), and a list of comments. Each comment will be mapped to at most one of the conflicts.
+            Intra-tree conflict is typically composed of two different viewpoints under the same aspect. For example, "I agree with <viewpoint 1>" and "I don't agree with <viewpoint 1>" form an intra-tree conflict.
+            A comment related to the intra-tree conflict should be negotiating between <viewpoint 1> and counter-<viewpoint 1>.
+            Inter-tree conflict is typically composed of multiple aspects under the same topic (post). It usually requires discussion members to choose one from them as the final answer, or trying to negotiate between them. For example, "<aspect 1> is the most important", "<aspect 2> is the most important", and "<aspect 3> is the most important" form an inter-tree conflict.
+            A comment related to the inter-tree conflict should be addressing the relationships of <aspect 1>, <aspect 2>, and <aspect 3>.
+
+            In this discussion, the available conflicts are:
             Intra-tree Conflicts:
-            {intra_tree_conflicts}
+            {intra_tree_conflicts_reduced}
             Each key corresponds to a conflict.
 
             Inter-tree Conflicts:
@@ -524,7 +541,6 @@ class CommentAnalyzer:
             Note: 
             - Each comment should only appear ONCE in this JSON object.
             - If a comment is related to the inter-tree conflict, no "assigned_conflict_id" should be provided.
-            - All comments shoule be present in the JSON object, if one cannot be easily assigned, assign it to the inter-tree conflict with low confidence score.
         """
 
         response = client.chat.completions.create(
@@ -539,6 +555,8 @@ class CommentAnalyzer:
         result_text = response.choices[0].message.content.strip()
         try:
             result_json = json.loads(extract_json_from_markdown(result_text))
+            print(f"🟢: In function [map_phase3_comments_to_conflicts] result_json = ")
+            pprint(result_json)
         except Exception as e:
             print(f"Error parsing GPT response for comment assignment: {e}")
             result_json = { "comment_assignments": [] }
@@ -552,7 +570,7 @@ class CommentAnalyzer:
         # First pass: process all 'intra' assignments (prioritized)
         for each_allocation in result_json['comment_assignments']:
             if each_allocation['assigned_conflict_type'] == 'intra':
-                comment_id_be_added = each_allocation['comment_id']
+                comment_id_be_added = int(each_allocation['comment_id'])
                 if comment_id_be_added not in assigned_comments:
                     reason_to_be_added = each_allocation['reason']
                     for each_comment in phase3_comments:
@@ -1196,6 +1214,7 @@ class CommentAnalyzer:
                     context['graph']['conflicts'] = conflicts
 
                     phase3_comments = self.extract_phase_x_comments(context, 3)
+                    print(f"[check_discussion_sufficiency]🐞: phase3_comments = {phase3_comments}")
 
                     conflicts_mapping = self.map_phase3_comments_to_conflicts(phase3_comments, conflicts['intra_tree'], conflicts['inter_tree'])
                     intra_conflicts_mapping = conflicts_mapping['intra_tree']
