@@ -50,6 +50,10 @@ class CommentAnalyzer:
             'co_construction': {
                 'min_comments': 3, # TODO: Unused variable!!
                 'description': '共同构建知识，整合观点'
+            },
+            'co_constrction_subphase_2': {
+                'min_comments': 3,
+                'description': '反思及应用'
             }
         }
     
@@ -941,6 +945,54 @@ class CommentAnalyzer:
             return_result['inter_tree'] = { 'score': 0, 'reason': 'No inter-tree consensus coverage data' }
         return return_result
 
+    def extract_reflection_comments(self, context):
+        # TODO: Implement this function: extract reflection comments from the context.
+        # Params: context: the context of the discussion.
+        # Return: a list of reflection comments.
+        # Use ChatGPT to feed into all phase 4 comments and extract all comments that are reflection of the discussion process or future applications of the dicussion result.
+        phase_4_comments = self.extract_phase_x_comments(context, 4)
+        prompt = f"""
+        You are extracting reflection comments from a discussion. This includes: 
+        - Reflection statements of the discussion process
+        - Discussion of future applications of the ideas and consensus of the discussion
+
+        You will be given a list of comments. For each comment, you need to determine if it is a reflection comment.
+
+        The comments are:
+        {context['comments']}
+
+        Respond with a JSON object in this exact format:
+        [
+            {{
+                "comment_id": 1 | 2 | ..., # the id of the comment
+                "comment_body": "...", # the body of the comment
+                "reason": "...", # the reason why this is a reflection comment
+            }},
+            {{
+                "comment_id": 1 | 2 | ..., # the id of the comment
+                "comment_body": "...", # the body of the comment
+                "reason": "...", # the reason why this is a reflection comment
+            }},
+            ...
+        ]
+        """
+        response = client.chat.completions.create(
+            model=arg.OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that extracts reflection comments from a discussion."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=400,
+            temperature=0.1
+        )
+        result_text = response.choices[0].message.content.strip()
+        try:
+            result_json = json.loads(extract_json_from_markdown(result_text))
+        except Exception as e:
+            print(f"Error parsing GPT response for reflection comments: {e}")
+            result_json = []
+        return result_json
+
     def add_to_graph(self, context, new_comments):
         print(f"🟢: In function [add_to_graph], new_comments (len={len(new_comments)}) = {new_comments}")
 
@@ -1093,7 +1145,7 @@ class CommentAnalyzer:
         new_discussion_phase = current_phase
         new_discussion_patience = current_discussion_patience
         # new_is_sufficient = current_is_sufficient
-        while current_phase != 5:
+        while current_phase != 6:
             if current_phase == 0:
                 if len(new_comments) > 0:
                     print(f"******************** Enter PHASE 1 ********************")
@@ -1293,6 +1345,17 @@ class CommentAnalyzer:
                     new_discussion_patience = arg.MAX_PATIENCE
                 else:
                     new_discussion_phase = 4
+                    new_discussion_patience = current_discussion_patience - len(new_comments)
+                    break
+            elif current_phase == 5:
+                reflection_comments = self.extract_reflection_comments(context)
+                print(f"[check_discussion_sufficiency]🐞: reflection_comments = {reflection_comments}")
+                context['reflection_comments'] = reflection_comments
+                if len(reflection_comments) > self.phase_criteria['co_construction_subphase_2']['min_comments']:
+                    new_discussion_phase = 6
+                    new_discussion_patience = arg.MAX_PATIENCE
+                else:
+                    new_discussion_phase = 5
                     new_discussion_patience = current_discussion_patience - len(new_comments)
                     break
             current_phase = new_discussion_phase
