@@ -15,6 +15,8 @@ client = OpenAI(
     api_key=arg.OPENAI_API_KEY
     )
 
+threshold_for_clarified_disagreements = 3
+
 
 class ResponseGenerator:
     """回复生成器"""
@@ -261,46 +263,11 @@ class ResponseGenerator:
                     break
             if target_tree != None: # find a intra-tree conflict
                 # first generate: under_addressed_conflicts, benefits
-                prompt = f'''
-                You will be given a post, and a pair of conflicting arguments related to one same aspect.
-                Your task is to summarize the under-addressed conflicts in a concise way, like a short phrase. Also, shortly explain why resolving this conflict is important to the discussion.
-
-                The post is:
-                {post_information}
-                
-                The argument is:
-                {target_tree['argument']}
-                The counterargument is:
-                {target_tree['counterargument']}
-                
-                Respond with a JSON object containing:
-                - "conflicts": string, the under-addressed conflicts. 
-                - "benefits": string, the benefits of resolving this conflict. The format should be "Because <benefits>."
-                '''
-                response = client.chat.completions.create(
-                    model=arg.OPENAI_MODEL,
-                    messages=[
-                        {"role": "system", "content": "You are an expert in analyzing online discussions."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.1
-                )
-                conflicts = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('conflicts', '')
-                benefits = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('benefits', '')
-
-                if intervention_style == 0: # telling
-                    intervention_message = strategy.format(
-                        conflicts=conflicts,
-                    )
-                elif intervention_style == 1: # selling
-                    intervention_message = strategy.format(
-                        conflicts=conflicts,
-                        benefits=benefits.replace('Because', 'because')
-                    )
-                elif intervention_style == 2: # participating
+                # TODO: if comment number < x: do original prompt, if comment number >= x: do new prompt that asks for clarified disagreements.
+                if len(target_tree['comments']) < threshold_for_clarified_disagreements:
                     prompt = f'''
                     You will be given a post, and a pair of conflicting arguments related to one same aspect.
-                    Your task is to act like a user in this discussion, and generate a comment trying to resolve the conflict.
+                    Your task is to summarize the under-addressed conflicts in a concise way, like a short phrase. Also, shortly explain why resolving this conflict is important to the discussion.
 
                     The post is:
                     {post_information}
@@ -311,7 +278,8 @@ class ResponseGenerator:
                     {target_tree['counterargument']}
                     
                     Respond with a JSON object containing:
-                    - "comment": string, the user-like comment trying to resolve the conflict.
+                    - "conflicts": string, the under-addressed conflicts. 
+                    - "benefits": string, the benefits of resolving this conflict. The format should be "Because <benefits>."
                     '''
                     response = client.chat.completions.create(
                         model=arg.OPENAI_MODEL,
@@ -321,12 +289,120 @@ class ResponseGenerator:
                         ],
                         temperature=0.1
                     )
-                    comment = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('comment', '')
-                    intervention_message = comment
-                elif intervention_style == 3: # delegating
-                    intervention_message = strategy
+                    conflicts = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('conflicts', '')
+                    benefits = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('benefits', '')
+
+                    if intervention_style == 0: # telling
+                        intervention_message = strategy.format(
+                            conflicts=conflicts,
+                        )
+                    elif intervention_style == 1: # selling
+                        intervention_message = strategy.format(
+                            conflicts=conflicts,
+                            benefits=benefits.replace('Because', 'because')
+                        )
+                    elif intervention_style == 2: # participating
+                        prompt = f'''
+                        You will be given a post, and a pair of conflicting arguments related to one same aspect.
+                        Your task is to act like a user in this discussion, and generate a comment trying to resolve the conflict.
+
+                        The post is:
+                        {post_information}
+                        
+                        The argument is:
+                        {target_tree['argument']}
+                        The counterargument is:
+                        {target_tree['counterargument']}
+                        
+                        Respond with a JSON object containing:
+                        - "comment": string, the user-like comment trying to resolve the conflict.
+                        '''
+                        response = client.chat.completions.create(
+                            model=arg.OPENAI_MODEL,
+                            messages=[
+                                {"role": "system", "content": "You are an expert in analyzing online discussions."},
+                                {"role": "user", "content": prompt}
+                            ],
+                            temperature=0.1
+                        )
+                        comment = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('comment', '')
+                        intervention_message = comment
+                    elif intervention_style == 3: # delegating
+                        intervention_message = strategy
+                    else:
+                        raise ValueError(f"Invalid intervention style: {intervention_style}")
                 else:
-                    raise ValueError(f"Invalid intervention style: {intervention_style}")
+                    # no longer try to reach consensus, and try to reach clarified disagreements.
+                    prompt = f'''
+                    You will be given a post, and a pair of conflicting arguments related to one same aspect.
+                    This conflict has gone through a lot of discussions, but consensus still cannot be reached. You should try to summarize both sides of the conflict in a concise way, and address the benefit of clarifying the disagreement.
+
+                    The post is:
+                    {post_information}
+                    
+                    The argument is:
+                    {target_tree['argument']}
+                    The counterargument is:
+                    {target_tree['counterargument']}
+
+                    The comments that are related to this conflict are:
+                    {target_tree['comments']}
+                    
+                    Respond with a JSON object containing:
+                    - "conflicts": string, the summary of the conflict with both sides that has not reached consensus. 
+                    - "benefits": string, the benefits of clarifying the disagreement. The format should be "Because <benefits>."
+                    '''
+                    response = client.chat.completions.create(
+                        model=arg.OPENAI_MODEL,
+                        messages=[
+                            {"role": "system", "content": "You are an expert in analyzing online discussions."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.1
+                    )
+                    conflicts = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('conflicts', '')
+                    benefits = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('benefits', '')
+
+                    if intervention_style == 0: # telling
+                        intervention_message = strategy.format(
+                            conflicts=conflicts,
+                        )
+                    elif intervention_style == 1: # selling
+                        intervention_message = strategy.format(
+                            conflicts=conflicts,
+                            benefits=benefits.replace('Because', 'because')
+                        )
+                    elif intervention_style == 2: # participating
+                        prompt = f'''
+                        You will be given a post, and a pair of conflicting arguments related to one same aspect.
+                        This conflict has gone through a lot of discussions, but consensus still cannot be reached.
+                        Your task is to act like a user in this discussion, and generate a comment trying to clarify the current disagreement between the two sides.
+
+                        The post is:
+                        {post_information}
+                        
+                        The argument is:
+                        {target_tree['argument']}
+                        The counterargument is:
+                        {target_tree['counterargument']}
+                        
+                        Respond with a JSON object containing:
+                        - "comment": string, the user-like comment trying to resolve the conflict.
+                        '''
+                        response = client.chat.completions.create(
+                            model=arg.OPENAI_MODEL,
+                            messages=[
+                                {"role": "system", "content": "You are an expert in analyzing online discussions."},
+                                {"role": "user", "content": prompt}
+                            ],
+                            temperature=0.1
+                        )
+                        comment = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('comment', '')
+                        intervention_message = comment
+                    elif intervention_style == 3: # delegating
+                        intervention_message = strategy
+                    else:
+                        raise ValueError(f"Invalid intervention style: {intervention_style}")
             else: # inter-tree conflict
                 print(f"[generate_custom_response]🐞: No intra-tree conflict found, checking inter-tree conflict ...")
                 dimensions = context['graph']['conflicts']['inter_tree']['dimensions']
@@ -400,7 +476,12 @@ class ResponseGenerator:
                     intervention_message = strategy
                 else:
                     raise ValueError(f"Invalid intervention style: {intervention_style}")
+        # TODO: for phase 4: select unresolved conflict randomly and ask to resolve it.
         elif current_phase == 4: # phase 4: integration
+            parent_comment_id = None
+            intervention_message = 'test reply'
+        # TODO: for phase 4.2, prompt users to post refliections directly.
+        elif current_phase == 5: # phase 5: co-construction subphase 2
             parent_comment_id = None
             intervention_message = 'test reply'
 
