@@ -707,6 +707,9 @@ class CommentAnalyzer:
                 3: Full agreement: the comments indicate that agreement is reached under all circumstances.
                 The reason is a brief explanation for the scoring.
 
+                Note:
+                - Be strict if you want to give a score of "clarified disagreement". For example, only one comment supporting the argument and only one comment supporting the counterargument is usually not enough to form a "clarified disagreement". There should be further discussion to clarify the different perspectives.
+
                 Respond with a JSON object in this exact format:
                 {{
                     "score": 0 | 1 | 2 | 3 , # the score of the conflict
@@ -1335,7 +1338,7 @@ class CommentAnalyzer:
                     pprint(inter_conflicts_mapping)
 
                     for tid, comments in intra_conflicts_mapping.items():
-                        context['graph']['conflicts']['intra_tree'][tid]['comments'] = comment
+                        context['graph']['conflicts']['intra_tree'][tid]['comments'] = comments
                     context['graph']['conflicts']['inter_tree']['comments'] = inter_conflicts_mapping # TOD: = or += ?; seems not very important since it will re-analyze all comments each time
 
                     inter_conflict_dimensions_mapping = self.map_phase3_comments_to_inter_conflict_dimensions(conflicts['inter_tree'])

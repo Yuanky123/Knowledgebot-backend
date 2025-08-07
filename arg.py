@@ -28,6 +28,7 @@ DEFAULT_TIMEOUT_SECONDS = int(os.getenv('DEFAULT_TIMEOUT_SECONDS', '60'))
 MAX_PATIENCE = int(os.getenv('MAX_PATIENCE', '20')) # 讨论阶段最大耐心值，单位条数
 MAX_TIME_PATIENCE = int(os.getenv('MAX_TIME_PATIENCE', '5')) # 时间阶段最大耐心值，单位轮次
 # INTERVENTION_THRESHOLD = int(os.getenv('INTERVENTION_THRESHOLD', '5')) # TODO: Not used yet
+PHASE_3_CLARIFIED_DISAGREEMENT_THRESHOLD = int(os.getenv('PHASE_3_CLARIFIED_DISAGREEMENT_THRESHOLD', '10')) # 在phase 3中，如果已经出现了超过这个数量的comments但仍未达成共识，bot则改变策略，从引导大家讨论到直接给出共识
 CURRENT_STYLE = int(os.getenv('CURRENT_STYLE', '0')) # 0: Telling, 1: Selling 2: Participating 3: Delegating
 CURRENT_TOPIC = int(os.getenv('CURRENT_TOPIC', '0')) # 0: 新讨论话题 1: 新讨论话题 2: 新讨论话题 3: 新讨论话题
 
