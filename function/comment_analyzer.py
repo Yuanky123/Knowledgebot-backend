@@ -23,6 +23,11 @@ local_client = OpenAI(
     api_key="0"
 )
 
+client_gemini = OpenAI(
+    base_url='https://api.zhizengzeng.com/v1',
+    api_key="sk-zk23e12430a30075ee3d9858364a99d800867112483439ff"
+)
+
 class CommentAnalyzer:
     """评论分析器"""
     
@@ -442,23 +447,29 @@ class CommentAnalyzer:
 
     def list_conflicts(self, context):
         graph = context['graph']
-        nodes = graph.get('nodes', [])
+        # nodes = graph.get('nodes', [])
         tree_ids = list_tree_ids(context)
         # Ensure arguments are present
         if 'arguments' not in graph:
             graph['arguments'] = {}
         for tid in tree_ids:
+            # INT2STR
+            tid = str(tid)
             if tid not in graph['arguments']:
                 graph['arguments'][tid] = self.extract_argument_and_counterargument(context, tid)
         # Intra-tree: argument vs counterargument for each tree
         intra_tree = {}
         for tid in tree_ids:
+            # INT2STR
+            tid = str(tid)
             arg = graph['arguments'][tid].get('argument', {}).get('text', '')
             ctr = graph['arguments'][tid].get('counterargument', {}).get('text', '')
             intra_tree[tid] = {'argument': arg, 'counterargument': ctr}
         # Inter-tree: all arguments across trees
         inter_tree = {}
         for tid1 in tree_ids:
+            # INT2STR
+            tid1 = str(tid1)
             arg1 = graph['arguments'][tid1].get('argument', {}).get('text', '')
             inter_tree[tid1] = {'argument': arg1}
         return {'intra_tree': intra_tree, 'inter_tree': { 'dimensions': inter_tree }}
@@ -547,8 +558,8 @@ class CommentAnalyzer:
             - If a comment is related to the inter-tree conflict, no "assigned_conflict_id" should be provided.
         """
 
-        response = client.chat.completions.create(
-            model=arg.OPENAI_MODEL,
+        response = client_gemini.chat.completions.create( # TODO: change back to client (gpt-4o-mini), or change all clients to google gemini
+            model="gemini-2.0-flash",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
                 {"role": "user", "content": Prompt}
@@ -559,14 +570,14 @@ class CommentAnalyzer:
         result_text = response.choices[0].message.content.strip()
         try:
             result_json = json.loads(extract_json_from_markdown(result_text))
-            print(f"🟢: In function [map_phase3_comments_to_conflicts] result_json = ")
+            print(f"[map_phase3_comments_to_conflicts]🐞: result_json = ")
             pprint(result_json)
         except Exception as e:
             print(f"Error parsing GPT response for comment assignment: {e}")
             result_json = { "comment_assignments": [] }
-        return_result = { "intra_tree": {} , "inter_tree": [] }
-        for each_intra_conflict in intra_tree_conflicts.keys():
-            return_result['intra_tree'][each_intra_conflict] = [] # { 1: [ {comment_1}, {comment_2}, ... ] , 2: [ {comment_1}, {comment_2}, ... ] , ... }
+        return_result = { "intra_tree": {} , "inter_tree": []}
+        for each_intra_conflict in intra_tree_conflicts_reduced.keys():
+            return_result['intra_tree'][str(each_intra_conflict)] = [] # { '1': [ {comment_1}, {comment_2}, ... ] , '2': [ {comment_1}, {comment_2}, ... ] , ... }
         
         # Track which comments have been assigned to avoid duplicates
         assigned_comments = set()
@@ -574,20 +585,20 @@ class CommentAnalyzer:
         # First pass: process all 'intra' assignments (prioritized)
         for each_allocation in result_json['comment_assignments']:
             if each_allocation['assigned_conflict_type'] == 'intra':
-                comment_id_be_added = int(each_allocation['comment_id'])
+                comment_id_be_added = int(each_allocation['comment_id']) # str to int
                 if comment_id_be_added not in assigned_comments:
                     reason_to_be_added = each_allocation['reason']
                     for each_comment in phase3_comments:
-                        if each_comment['id'] == comment_id_be_added:
+                        if each_comment['id'] == comment_id_be_added: # each_comment['id'] is int
                             each_comment['reason'] = reason_to_be_added
-                            return_result['intra_tree'][each_allocation['assigned_conflict_id']].append(each_comment)
+                            return_result['intra_tree'][str(each_allocation['assigned_conflict_id'])].append(each_comment) # each_allocation['assigned_conflict_id'] is int
                             assigned_comments.add(comment_id_be_added)
                             break
         
         # Second pass: process 'inter' assignments only for comments not already assigned
         for each_allocation in result_json['comment_assignments']:
             if each_allocation['assigned_conflict_type'] == 'inter':
-                comment_id_be_added = each_allocation['comment_id']
+                comment_id_be_added = int(each_allocation['comment_id']) # str to int
                 if comment_id_be_added not in assigned_comments:
                     reason_to_be_added = each_allocation['reason']
                     for each_comment in phase3_comments:
@@ -649,81 +660,117 @@ class CommentAnalyzer:
             print(f"Error parsing GPT response for comment assignment: {e}")
             result_json = { "comment_assignments": [] }
         return_result = {}
+
         for each_conflict in inter_tree_conflicts['dimensions'].keys():
             return_result[each_conflict] = []
         for each_allocation in result_json['comment_assignments']:
-            for each_dimension_id in each_allocation['assigned_dimension_id']:
-                return_result[each_dimension_id].append(inter_tree_conflicts['comments'][each_allocation['comment_index']])
+            for each_dimension_id in each_allocation['assigned_dimension_id']: # each_dimension_id is int
+                return_result[str(each_dimension_id)].append(inter_tree_conflicts['comments'][each_allocation['comment_index']])
         return return_result
     
     def determine_consensus_of_intra_conflicts(self, intra_tree_conflicts):
-        # TODO: Implemenet this function: for each conflict get all phase 3 comments related to this conflict and rate the degree of consensus.
+        print(f"🟢: In function [determine_consensus_of_intra_conflicts], intra_tree_conflicts = ")
+        pprint(intra_tree_conflicts)
+        # Implemenet this function: for each conflict get all phase 3 comments related to this conflict and rate the degree of consensus.
         # Params: intra_tree_conflicts: all intra tree conflicts. { 1: [ "argument": "...", "counterargument": "...", "comments": [ {comment_1}, {comment_2}, ... ] ] , 2: [ "argument": "...", "counterargument": "...", "comments": [ {comment_1}, {comment_2}, ... ] ] , ... }
         # Score from 0 to 2 (0 = no consensus, 1 = partial consensus, 2 = complete consensus) and let GPT give a reason for the scoring.
         # Return { 1: { 'score': 0, 'reason': '...' } , 2: { 'score': 1, 'reason': '...' } , ... }
         
-        Prompt = f"""
-        You are evaluating the degree and type of consensus of a conflict, based on the comments related to this conflict.
-        The input is a list of conflicts and each conflict has a list of related comments:
-        {intra_tree_conflicts}
+        return_result = {} # { '1': { 'score': 0, 'reason': '...' } , '2': { 'score': 1, 'reason': '...' } , ... }
+        # One prompt per conflict
 
-        You need to provide a score that indicates the degree and type of the consensus of each conflict.
-        The score is from 0 to 3. Each score has a type of consensus:
-        0: No consensus: there are no consensus of any type reached, or the comments are not related to the conflict.
-        1: Clarified disagreement: the comments indicate that it is impossible to reach agreement, and the area of disagreement is clarified.
-        2: Conditional agreement: the comments indicate that agreementis reached, but different aspects apply under different conditions.
-        3: Full agreement: the comments indicate that agreement is reached under all circumstances.
-        The reason is a brief explanation for the scoring.
+        for tid in intra_tree_conflicts.keys():
 
-        Note:
-        - If there are no comments, the score is 0 and the reason is "No comments related to this conflict".
+            if intra_tree_conflicts[tid]['counterargument'] == '':
+                return_result[tid] = { 'score': 3, 'reason': "There is no counterargument, so the conflict is not a conflict." }
+            elif intra_tree_conflicts[tid].get('comments', []) == []: # counterargument exists, but no comments related to this conflict
+                return_result[tid] = { 'score': 0, 'reason': "No comments related to this conflict" }
+            else:
+                comments_text = '\n'.join([f"Comment {i+1}: {comment}" for i, comment in enumerate(intra_tree_conflicts[tid]['comments'])])
 
-        Respond with a JSON object in this exact format:
-        [
-            {{
-            "conflict_index": 0 | 1 | 2 ..., # the index of the conflict in the list
-            "score": 0 | 1 | 2 | 3 , # the score of the conflict
-            "reason": "brief explanation"
-            }},
-            {{
-            "conflict_index": 0 | 1 | 2 | ..., # the index of the conflict in the list
-            "score": 0 | 1 | 2 | 3, # the score of the conflict
-            "reason": "brief explanation"
-            }},
-        ]
-        """
+                Prompt = f"""
+                You are evaluating the degree and type of consensus of a conflict, based on the comments related to this conflict.
+                The conflict is composed of an argument and a counterargument. The comments are related to the conflict.
+                
+                Conflict:
+                Argument: {intra_tree_conflicts[tid]['argument']}
+                Counterargument: {intra_tree_conflicts[tid]['counterargument']}
+                
+                Comments related to this conflict:
+                {comments_text}
 
-        response = client.chat.completions.create(
-            model=arg.OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
-                {"role": "user", "content": Prompt}
-            ],
-            max_tokens=400,
-            temperature=0.1
-        )
+                You need to provide a score that indicates the degree and type of the consensus of this conflict.
+                The score is from 0 to 3. Each score has a type of consensus:
+                0: No consensus: there are no consensus of any type reached, or the comments are not related to the conflict.
+                1: Clarified disagreement: the comments indicate that it is impossible to reach agreement, and the area of disagreement is clarified.
+                2: Conditional agreement: the comments indicate that agreementis reached, but different aspects apply under different conditions.
+                3: Full agreement: the comments indicate that agreement is reached under all circumstances.
+                The reason is a brief explanation for the scoring.
 
-        result_text = response.choices[0].message.content.strip()
-        try:
-            result_json = json.loads(extract_json_from_markdown(result_text))
-        except Exception as e:
-            print(f"Error parsing GPT response for conflict assignment: {e}")
-            result_json = []
-        return_result = {}
-        for each_evaluation in result_json:
-            return_result[each_evaluation['conflict_index']] = { 'score': each_evaluation['score'], 'reason': each_evaluation['reason'] }
+                Respond with a JSON object in this exact format:
+                {{
+                    "score": 0 | 1 | 2 | 3 , # the score of the conflict
+                    "reason": "brief explanation"
+                }}
+                """
+
+                response = client.chat.completions.create(
+                    model=arg.OPENAI_MODEL,
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
+                        {"role": "user", "content": Prompt}
+                    ],
+                    max_tokens=400,
+                    temperature=0.1
+                )
+
+                result_text = response.choices[0].message.content.strip()
+                try:
+                    result_json = json.loads(extract_json_from_markdown(result_text))
+                except Exception as e:
+                    print(f"Error parsing GPT response for conflict assignment: {e}")
+                    result_json = { 'score': 0, 'reason': "Error parsing GPT response for conflict assignment" }
+                return_result[tid] = { 'score': result_json['score'], 'reason': result_json['reason'] }
+        print(f"[determine_consensus_of_intra_conflicts]🐞: return_result = ")
+        pprint(return_result)
         return return_result
 
     def determine_consensus_of_inter_conflicts(self, inter_tree_conflicts):
-        # TODO: Implemenet this function: for each conflict get all phase 3 comments related to this conflict and rate the degree of consensus.
+        print(f"🟢: In function [determine_consensus_of_inter_conflicts], inter_tree_conflicts = ")
+        pprint(inter_tree_conflicts)
+        # Implemenet this function: for each conflict get all phase 3 comments related to this conflict and rate the degree of consensus.
         # Params: inter_tree_conflicts: all inter tree conflicts. { 'dimensions': { 1: {'argument': '...', 'comments': [ {comment_1}, {comment_2}, ... ] } , 2: {'argument': '...', 'comments': [ {comment_1}, {comment_2}, ... ] } , ... }, 'comments': [ {comment_1}, {comment_2}, ... ] }
         # Score from 0 to 2 (0 = no consensus, 1 = partial consensus, 2 = complete consensus) and let GPT give a reason for the scoring.
         # Return { 1: { 'score': 0, 'reason': '...' } , 2: { 'score': 1, 'reason': '...' } , ... }
         
+        # if any dimension is not covered / have no comments, the score is 0 and the reason is "The comments do not cover all dimensions of the conflict".
+        all_dimension_covered = True
+        for tid in inter_tree_conflicts['dimensions'].keys():
+            if inter_tree_conflicts['dimensions'][tid]['coverage_rating']['score'] == '0':
+                all_dimension_covered = False
+                break
+        if not all_dimension_covered:
+            return {'score': 0, 'reason': "The comments do not cover all dimensions of the conflict"}        
+
+        # Preprocess the input, eg. remove duplicated comments using set(); decide what to show in prompts
+        conflicts_text = '\n'.join([f"- Conflict {tid}: {inter_tree_conflicts['dimensions'][tid]['argument']}" for tid in inter_tree_conflicts['dimensions'].keys()])
+
+        inter_tree_comments_id_set = set()
+        inter_tree_comments = []
+        for tid in inter_tree_conflicts['dimensions'].keys():
+            for comment in inter_tree_conflicts['dimensions'][tid]['comments']:
+                if comment['id'] not in inter_tree_comments_id_set:
+                    inter_tree_comments_id_set.add(comment['id'])
+                    inter_tree_comments.append(comment)
+        comments_text = '\n'.join([f"- Comment {comment['id']}: {comment['body']}" for comment in inter_tree_comments])
+
         Prompt = f"""
         You are evaluating the degree and type of consensus of a conflict, based on the comments related to this conflict.
-        The input is different dimensions of the conflict, and each dimension has a list of related comments:
-        {inter_tree_conflicts['dimensions']}
+        All dimensions of the conflict are (the goal of the whole discussion is to negotiate between the different views represented by these dimensions):
+        {conflicts_text}
+
+        The comments related to the conflicts are:
+        {comments_text}
 
         You need to provide a score that indicates the degree and type of the consensus of this conflict.
         The score is from 0 to 3. Each score has a type of consensus:
@@ -737,7 +784,6 @@ class CommentAnalyzer:
 
         Respond with a JSON object in this exact format:
         {{
-            "conflict_index": 0 | 1 | 2 ..., # the index of the conflict in the list
             "score": 0 | 1 | 2 | 3 , # the score of the conflict
             "reason": "brief explanation"
         }}
@@ -759,13 +805,15 @@ class CommentAnalyzer:
         except Exception as e:
             print(f"Error parsing GPT response for conflict assignment: {e}")
             result_json = []
-        return_result = {}
-        for each_evaluation in result_json:
-            return_result[each_evaluation['conflict_index']] = { 'score': each_evaluation['score'], 'reason': each_evaluation['reason'] }
+        return_result = {'score': result_json['score'], 'reason': result_json['reason'] }
+        print(f"[determine_consensus_of_inter_conflicts]🐞: return_result = ")
+        pprint(return_result)
         return return_result
 
 
     def determine_coverage_of_inter_conflicts(self, inter_tree_conflicts):
+        print(f"🟢: In function [determine_coverage_of_inter_conflicts], inter_tree_conflicts = ")
+        pprint(inter_tree_conflicts)
         # TODO: Implemenet this function: get all phase 3 comments related to this conflict and for each dimension determine whether the phase 3 comments cover it.
         # Params: inter_tree_conflicts: all inter tree conflicts. { 'dimensions': { 1: {'argument': '...', 'comments': [ {comment_1}, {comment_2}, ... ] } , 2: {'argument': '...', 'comments': [ {comment_1}, {comment_2}, ... ] } , ... }, 'comments': [ {comment_1}, {comment_2}, ... ] }
         # Score from 0 to 1 (0 = not covered, 1 = covered) and let GPT give a reason for the scoring.
@@ -773,8 +821,11 @@ class CommentAnalyzer:
 
         Prompt = f"""
         You are evaluating if all dimensions of a conflict is covered by the comments related to it.
-        The input is a list of dimensions of a conflict and each dimension has a list of related comments:
+        All dimensions of the conflict are:
         {inter_tree_conflicts['dimensions']}
+
+        The comments related to the conflicts are:
+        {inter_tree_conflicts['comments']}
 
         Note:
         - If there are no comments for one dimension, the score is 0 and the reason is "No comments related to this dimension".
@@ -791,8 +842,8 @@ class CommentAnalyzer:
         ]
         """
 
-        response = client.chat.completions.create(
-            model=arg.OPENAI_MODEL,
+        response = client_gemini.chat.completions.create( # TODO: change to client
+            model="gemini-2.0-flash",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
                 {"role": "user", "content": Prompt}
@@ -809,7 +860,9 @@ class CommentAnalyzer:
             result_json = []
         return_result = {}  
         for each_evaluation in result_json:
-            return_result[each_evaluation['dimension_order']] = { 'score': each_evaluation['is_covered'], 'reason': each_evaluation['reason']}
+            return_result[str(each_evaluation['dimension_order'])] = { 'score': each_evaluation['is_covered'], 'reason': each_evaluation['reason']}
+        print(f"[determine_coverage_of_inter_conflicts]🐞: return_result = ")
+        pprint(return_result)
         return return_result
 
     def consensus_generate(self, intra_tree_conflicts, inter_tree_conflicts):
@@ -1184,6 +1237,8 @@ class CommentAnalyzer:
                         context['graph']['tree_scores'] = {}
                     all_trees_full = True
                     for tid in tree_ids:
+                        # INT2STR
+                        tid = str(tid)
                         argument_analysis_result = self.extract_argument_and_counterargument(context, tid)
                         context['graph']['arguments'][tid] = argument_analysis_result
                         argument = argument_analysis_result['argument']['text']
@@ -1264,6 +1319,8 @@ class CommentAnalyzer:
                 try:
                     conflicts = self.list_conflicts(context)
                     context['graph']['conflicts'] = conflicts
+                    print(f"[check_discussion_sufficiency]🐞: context['graph']['conflicts'] = ")
+                    pprint(context['graph']['conflicts'])
 
                     phase3_comments = self.extract_phase_x_comments(context, 3)
                     print(f"[check_discussion_sufficiency]🐞: phase3_comments = {phase3_comments}")
@@ -1272,9 +1329,14 @@ class CommentAnalyzer:
                     intra_conflicts_mapping = conflicts_mapping['intra_tree']
                     inter_conflicts_mapping = conflicts_mapping['inter_tree']
 
+                    print(f"[check_discussion_sufficiency]🐞: intra_conflicts_mapping = ")
+                    pprint(intra_conflicts_mapping)
+                    print(f"[check_discussion_sufficiency]🐞: inter_conflicts_mapping = ")
+                    pprint(inter_conflicts_mapping)
+
                     for tid, comments in intra_conflicts_mapping.items():
-                        context['graph']['conflicts']['intra_tree'][tid]['comments'] = comments
-                    context['graph']['conflicts']['inter_tree']['comments'] = inter_conflicts_mapping
+                        context['graph']['conflicts']['intra_tree'][tid]['comments'] = comment
+                    context['graph']['conflicts']['inter_tree']['comments'] = inter_conflicts_mapping # TOD: = or += ?; seems not very important since it will re-analyze all comments each time
 
                     inter_conflict_dimensions_mapping = self.map_phase3_comments_to_inter_conflict_dimensions(conflicts['inter_tree'])
                     for tid, comments in inter_conflict_dimensions_mapping.items():
@@ -1291,19 +1353,22 @@ class CommentAnalyzer:
                     
                     # If all ratings are 1, do self.determine_consensus_of_inter_conflicts
                     if all(rating['score'] == 1 for rating in inter_conflicts_coverage_rating.values()):
-                        inter_conflicts_consensus_rating = self.determine_consensus_of_inter_conflicts(context['graph']['conflicts']['inter_tree'])
-                        for tid, rating in inter_conflicts_consensus_rating.items():
-                            context['graph']['conflicts']['inter_tree']['consensus_rating'] = rating
+                        inter_conflicts_consensus_rating = self.determine_consensus_of_inter_conflicts(context['graph']['conflicts']['inter_tree']) # {'score': int, 'reason': str}
+                        context['graph']['conflicts']['inter_tree']['consensus_rating'] = inter_conflicts_consensus_rating
                     
-                    
+                    print(f"[check_discussion_sufficiency]🐞: will check if PHASE 3 is sufficient ...")
+                    pprint(context['graph']['conflicts'])
                     # Advance phase only if all intra and inter-tree conflicts have consensus score >= 1 and all inter-tree conflict dimensions have score == 1
                     all_ok = True
                     for tid in list_tree_ids(context):
+                        # INT2STR
+                        tid = str(tid)
                         # If any of the trees have unresolved conflicts, stay in phase 3
-                        if context['graph']['conflicts']['intra_tree'][tid]['consensus_rating']['score'] < 1 or context['graph']['conflicts']['inter_tree']['dimensions'][tid]['coverage_rating']['score'] < 1:
+                        if context['graph']['conflicts']['intra_tree'].get(tid, {}).get('consensus_rating', {}).get('score', 0) < 1 \
+                            or context['graph']['conflicts']['inter_tree']['dimensions'].get(tid, {}).get('coverage_rating', {}).get('score', 0) < 1: # 1. intra-tree must reach consensus; 2. inter-tree must be covered
                             all_ok = False
                             break
-                    if context['graph']['conflicts']['inter_tree']['consensus_rating']['score'] < 1:
+                    if context['graph']['conflicts']['inter_tree'].get('consensus_rating', {}).get('score', 0) < 1: # inter-tree must reach consensus
                         all_ok = False
                     if all_ok:
                         print(f"******************** Enter PHASE 4 ********************")

@@ -31,4 +31,8 @@ test_comments = [
     "Yes, studies have shown that people who know their neighbors tend to feel safer and report higher levels of life satisfaction.",
     "Agreed. Stronger social ties can reduce loneliness",
     "I agree, especially in urban areas where people often feel isolated despite living close to others.",
+
+
+    # Overall Negotiation: phase 3
+    "I see where everyone’s coming from, and honestly, these ideas aren’t mutually exclusive—they actually support each other. Good public transport can reduce commuting stress, strict labor laws can give people more free time, and strong communities can help people use that time meaningfully. Maybe instead of picking just one, we can think about how to combine them: for example, better transport and work-life balance could enable more community engagement. Let’s focus on policies that make city life more humane from multiple angles.",
 ]
