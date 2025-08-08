@@ -261,14 +261,14 @@ Content-Type: application/json
 
 
 # TODO:
-[x] fetch的评论的顺序可能不对
+- [x] fetch的评论的顺序可能不对
   是乱序，需要按照id或created_at排序
 
-[x] 中间发新评论，fetch到的是None
+- [x] 中间发新评论，fetch到的是None
   原因：return的comment不是按照任何一个时间顺序来排列的
   [ ] 要不要关掉modify comments的功能？
 
-[x] 阶段1 要忽略所有阶段>1的comment
+- [x] 阶段1 要忽略所有阶段>1的comment
 以此类推
 (后面的阶段不需要再fetch原始comment了)
 
@@ -276,39 +276,40 @@ Content-Type: application/json
     🐞: New comments detected; len(new_comments) = 69, len(Current_context['comments']) = 66
     **** Analyzing comment 0: I think it is important to have good public transportations so that people won't spend a lot of time commuting.
     Comment Classifier Response: 1
-[x] 是Append和sort by time 有冲突
+- [x] 是Append和sort by time 有冲突
 
-[x] bot生成的评论Phase的赋值
-  [x] bot style 为participating时，当前处在哪个阶段，bot message 就赋值为哪个阶段； 其他风格的bot message phase全部为0
-    [ ] 另一个观察： bot自己的评论即使算作Phase，但并不直接导致大家继续。只有有人发了新评论，才能够真的推进到下一阶段。(但对整个系统影响不大，甚至可能是我们想要的效果？)
+- [x] bot生成的评论Phase的赋值
+  - [x] bot style 为participating时，当前处在哪个阶段，bot message 就赋值为哪个阶段； 其他风格的bot message phase全部为0
+    - [ ] 另一个观察： bot自己的评论即使算作Phase，但并不直接导致大家继续。只有有人发了新评论，才能够真的推进到下一阶段。(但对整个系统影响不大，甚至可能是我们想要的效果？)
 
-[ ] 重复评论会当做两个不同的argument
+- [ ] 重复评论会当做两个不同的argument
 
-[ ] 所有有random的地方都输出一个log
+- [ ] 所有有random的地方都输出一个log
 
-[ ] 并发测试：60人同时post comments
+- [ ] 并发测试：60人同时post comments
 
-[ ] 读写context，（加锁？）modify需要一个文件副本？interface?
+- [ ] 读写context，（加锁？）modify需要一个文件副本？interface?
 
-[ ] comment phase analyzer: 如果之前已经有了Phase，则不重新分析
+- [ ] comment phase analyzer: 如果之前已经有了Phase，则不重新分析
   但感觉没有那么必要
 
-[ ] phase 3 consensus 分类
+- [ ] phase 3 consensus 分类
   + 三种consensus的定义
 
-[ ] phase 3 第二阶段的response generator
+- [ ] phase 3 第二阶段的response generator
 
-[ ] phase 4 - 1 consensus type 加进Template
-[ ] phase 4 - 2 for above mentioned consensus, please反思应用
+- [x] phase 4 - 1 consensus type 加进Template
 
-[ ] phase 4 - 2 饱和判断条件（threshold条comment属于反思或应用）
+- [ ] phase 4 - 2 for above mentioned consensus, please反思应用
 
-[ ] 运行bot 几个人测试一下
+- [ ] phase 4 - 2 饱和判断条件（threshold条comment属于反思或应用）
 
-[ ] id_to_comment 变量 容易没考虑到new_added_comments
+- [ ] 运行bot 几个人测试一下
+
+- [ ] id_to_comment 变量 容易没考虑到new_added_comments
 
 
-[x] 提取counterargument有false positive: 
+- [x] 提取counterargument有false positive: 
     "2": {
                 "argument": {
                     "text": "I think we should enforce strict labor laws so that people don't overwork.",
@@ -321,20 +322,20 @@ Content-Type: application/json
             },
     Note: 部分是因为一开始assign tree的时候搞错了
     (在prompt中加了，但是还没找到case测试，不确定是否有效) - comment analyzer line 308
-    [ ] analyze_connection_batch中也可以加：(respond A: we can also consider B2 => group with B1?)
+    - [ ] analyze_connection_batch中也可以加：(respond A: we can also consider B2 => group with B1?)
 
 
-[ ] bot干预策略，random选择target的时候，尽量不要反复持续干预同一个点
+- [ ] bot干预策略，random选择target的时候，尽量不要反复持续干预同一个点
 
-[ ] argument score evaluation: 先输出原因再输出分数；给出三个dimension的定义？因为现在很明显的评论都分不出来 eg. The phrase 'I think' indicates a personal opinion, which serves as a qualifier for the strength of the main argument.', - 但还行
+- [ ] argument score evaluation: 先输出原因再输出分数；给出三个dimension的定义？因为现在很明显的评论都分不出来 eg. The phrase 'I think' indicates a personal opinion, which serves as a qualifier for the strength of the main argument.', - 但还行
 
-[x] 总是输出time patience + discussion patience
+- [x] 总是输出time patience + discussion patience
 
 
-[x] discussion patience < 0 时每回合都会intervene？这是符合我们预期的吗
+- [x] discussion patience < 0 时每回合都会intervene？这是符合我们预期的吗
   并非如此
 
 
-[x] In reply to:加换行 (build_chain)
+- [x] In reply to:加换行 (build_chain)
 
-[ ] 确定phase 2 sufficient criteria (现在用的比较宽松)
+- [ ] 确定phase 2 sufficient criteria (现在用的比较宽松)

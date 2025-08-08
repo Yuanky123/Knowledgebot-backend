@@ -1,7 +1,10 @@
 {
     "initiation":  "{existing_aspects}. Now, please consider {new_angle} and share your thoughts.",
     "exploration": "For the argument \"{target_argument}\", can anyone provide more {missing_support} for it?",
-    "negotiation": "I noticed that there still exist some conflicts unresolved, for example, {conflicts}. Please share your thoughts on this conflict.",
-    "co_construction": "我看到大家在{issue}上有不同的立场，这很正常。我相信你们有能力通过讨论找到一个好的解决方案。请继续你们的协商。",
+    "negotiation": [
+        "I noticed that there still exist some conflicts unresolved, for example, {conflicts}. Please share your thoughts on this conflict.",
+        "I noticed that we still have not reached a consensus on {conflicts}, but the disagreement is clear. For each side, please summarize and state your stance on this conflict."
+    ],
+    "co_construction": "Now, please summarize ... (TODO)",
     "co_construction_subphase_2": "TODO"
 } 

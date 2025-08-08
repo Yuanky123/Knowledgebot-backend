@@ -25,6 +25,8 @@ def build_parent_chain(comment, id_to_comment, depth=0, max_depth=1):
     return ''
 
 def formulate_tree(context, tree_id):
+    # STR2INT
+    tree_id = int(tree_id)
     nodes = context['graph']['nodes']
     tree_nodes = [n for n in nodes if n.get('tree_id', []).count(tree_id) > 0]
     if not tree_nodes:
@@ -49,6 +51,9 @@ def extract_json_from_markdown(markdown_text):
     return cleaned.strip()
 
 def list_tree_ids(context):
+    '''
+    return a list of tree ids (int)
+    '''
     tree_ids = set()
     nodes = context['graph']['nodes']
     for node in nodes:
