@@ -11,10 +11,11 @@ import json
 import traceback
 from .utils import build_parent_chain, extract_json_from_markdown, extract_mentioned_user, formulate_tree, list_tree_ids
 from pprint import pprint
+import copy
 
 # Configure OpenAI client
 client = OpenAI(
-    base_url='https://api.openai-proxy.org/v1',
+    base_url='https://api.zhizengzeng.com/v1',
     api_key=arg.OPENAI_API_KEY
     )
 
@@ -23,10 +24,10 @@ local_client = OpenAI(
     api_key="0"
 )
 
-client_gemini = OpenAI(
-    base_url='https://api.zhizengzeng.com/v1',
-    api_key="sk-zk23e12430a30075ee3d9858364a99d800867112483439ff"
-)
+# client_gemini = OpenAI(
+#     base_url='https://api.zhizengzeng.com/v1',
+#     api_key="sk-zk23e12430a30075ee3d9858364a99d800867112483439ff"
+# )
 
 class CommentAnalyzer:
     """评论分析器"""
@@ -564,8 +565,8 @@ class CommentAnalyzer:
             - If a comment is related to the inter-tree conflict, no "assigned_conflict_id" should be provided.
         """
 
-        response = client_gemini.chat.completions.create( # TODO: change back to client (gpt-4o-mini), or change all clients to google gemini
-            model="gemini-2.0-flash",
+        response = client.chat.completions.create(
+            model=arg.OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
                 {"role": "user", "content": Prompt}
@@ -851,8 +852,8 @@ class CommentAnalyzer:
         ]
         """
 
-        response = client_gemini.chat.completions.create( # TODO: change to client
-            model="gemini-2.0-flash",
+        response = client.chat.completions.create(
+            model=arg.OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
                 {"role": "user", "content": Prompt}
@@ -1090,6 +1091,11 @@ class CommentAnalyzer:
 
     def add_to_graph(self, context, new_comments):
         print(f"🟢: In function [add_to_graph], new_comments (len={len(new_comments)}) = {new_comments}")
+
+        # copy new_comments
+        new_comments = copy.deepcopy(new_comments)
+        # filter those comments that are < current phase
+        new_comments = [each_comment for each_comment in new_comments if each_comment['message_phase'] >= context['phase']]
 
         graph = context['graph']
         nodes = graph.get('nodes', [])

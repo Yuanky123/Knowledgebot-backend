@@ -11,7 +11,7 @@ from pprint import pprint
 from openai import OpenAI
 
 client = OpenAI(
-    base_url='https://api.openai-proxy.org/v1',
+    base_url='https://api.zhizengzeng.com/v1', #'https://api.openai-proxy.org/v1',
     api_key=arg.OPENAI_API_KEY
     )
 
