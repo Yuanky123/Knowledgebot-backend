@@ -365,17 +365,6 @@ class ResponseGenerator:
                             conflicts=conflicts,
                         ) # same for both telling and selling
                         
-                        # TODO: delete this part after testing
-                        # if intervention_style == 0: # telling
-                        #     intervention_message = strategy.format(
-                        #         conflicts=conflicts,
-                        #     )
-                        # elif intervention_style == 1: # selling
-                        #     intervention_message = strategy.format(
-                        #         conflicts=conflicts,
-                        #     )
-                        # else:
-                        #     raise ValueError(f"Invalid intervention style: {intervention_style}")
                     elif intervention_style == 2: # participating
                         # comments_text: first sort by id, then join with \n
                         comments_text = '\n'.join([f"Comment {comment['id']}: {comment['body']}" for comment in sorted(target_tree['comments'], key=lambda x: x['id'])])
@@ -653,14 +642,245 @@ class ResponseGenerator:
                         else:
                             raise ValueError(f"Invalid intervention style: {intervention_style}")
 
-        # TODO: for phase 4: select unresolved conflict randomly and ask to resolve it.
+        # for phase 4: select a conflict that has not been summarized randomly and ask to resolve it.
         elif current_phase == 4: # phase 4: integration
             parent_comment_id = None
-            intervention_message = 'test reply'
+            # there is at least one consensus that has not been summarized (covered by phase 4 comments)
+            # select a conflict that has not been summarized randomly and ask to resolve it.
+            # First: intra-tree conflict consensus
+            original_argument, original_counterargument, original_consensus = None, None, None
+            for tid in random.sample(list(context['graph']['coverage_of_consensus']['intra_tree'].keys()), len(context['graph']['coverage_of_consensus']['intra_tree'])):
+                if context['graph']['coverage_of_consensus']['intra_tree'][tid]['score'] == 0:
+                    print(f"[generate_custom_response]🐞: found intra-tree conflict consensus that has not been summarized: {tid}")
+                    original_argument = context['graph']['conflicts']['intra_tree'][tid]['argument']
+                    original_counterargument = context['graph']['conflicts']['intra_tree'][tid]['counterargument']
+                    original_consensus = context['graph']['conflicts']['intra_tree'][tid]['consensus']
+                    break
+
+            if original_argument is not None and original_counterargument is not None and original_consensus is not None:
+                # telling / selling: summarize the tree as a phrase + benefits for summarization
+                # participating: summarize the tree as a phrase + output consensus
+                # delegating: template
+                if intervention_style in [0, 1, 2]:
+                    
+                    prompt = f'''
+                    You will be given a post, an argument and a counterargument related to the post.
+                    Your task is to encourage the readers to summarize the consensus related to the argument and the counterargument. 
+                    First, summarize the argument and the counterargument in a concise way, like a short phrase (you should use a phrase to summarize both the argument and the counterargument). Then, give a reason why it is important to summarize the consensus related to this topic.
+
+                    The post is:
+                    {post_information}
+
+                    The argument is:
+                    {original_argument}
+
+                    The counterargument is:
+                    {original_counterargument if original_counterargument != "" else "(No counterargument)"}
+
+                    Respond with a JSON object containing:
+                    - "target_aspect": string, the aspect that the readers should summarize.
+                    - "reason": string, the reason why it is important to summarize the consensus related to this topic. The format should be "Because <reason>."
+                    '''
+                    response = client.chat.completions.create(
+                        model=arg.OPENAI_MODEL,
+                        messages=[
+                            {"role": "system", "content": "You are an expert in analyzing online discussions."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.1
+                    )
+                    target_aspect = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('target_aspect', '')
+                    reason = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('reason', '')
+                    
+                    if intervention_style == 0: # telling
+                        intervention_message = strategy.format(
+                            target_aspect=target_aspect
+                        )
+                    elif intervention_style == 1: # selling
+                        intervention_message = strategy.format(
+                            target_aspect=target_aspect,
+                            benefits=reason.replace('Because', 'because')
+                        )
+                    elif intervention_style == 2: # participating
+                        intervention_message = f"Since we have discussed a lot on {target_aspect}, I'd like to summarize the consensus we have reached: {original_consensus} Do you have any thoughts or suggestions on this summary?"
+                elif intervention_style == 3: # delegating
+                    intervention_message = strategy
+                else:
+                    raise ValueError(f"Invalid intervention style: {intervention_style}")
+
+
+            elif original_argument is None and original_counterargument is None and original_consensus is None: # no intra-tree conflict consensus that has not been summarized
+                print(f"[generate_custom_response]🐞: no intra-tree conflict consensus that has not been summarized, checking inter-tree conflict consensus...")
+                print(f"[generate_custom_response]🐞: found inter-tree conflict consensus that has not been summarized (score = {context['graph']['coverage_of_consensus']['inter_tree']['score']})")
+                # telling / selling: summarize each tree as a phrase + benefits for summarization
+                # participating: summarize each tree as a phrase + output consensus
+                # delegating: template
+                arguments_text = '\n'.join([f"Argument {i}: {arg['argument']}" for i, arg in context['graph']['conflicts']['inter_tree']['dimensions'].items()])
+
+                prompt = f'''
+                You will be given a post, and a list of different arguments related to the post, each argument is related to one aspect. 
+                Different arguments are competing with each other, and consensus has not been reached.
+                Your task is to encourage the readers to summarize the consensus related to the negotiation process among different arguments.
+                First, summarize each argument in a concise way, like a short phrase. Then, give a reason why it is important to summarize the consensus related to the negotiation process among different arguments.
+
+                The post is:
+                {post_information}
+
+                The arguments are:
+                {arguments_text}
+
+                Respond with a JSON object containing:
+                - "arguments_keywords": a list of keywords or short phrases summarizing each argument.
+                - "reason": string, the reason why it is important to summarize the consensus related to the negotiation process among different arguments. The format should be "Because <reason>."
+                '''
+                response = client.chat.completions.create(
+                    model=arg.OPENAI_MODEL,
+                    messages=[
+                        {"role": "system", "content": "You are an expert in analyzing online discussions."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.1
+                )
+                arguments_keywords = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('arguments_keywords', [])
+                reason = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('reason', '')
+
+                if intervention_style == 0: # telling
+                    intervention_message = strategy.format(
+                        target_aspect='the tensions between ' + ', '.join(arguments_keywords),
+                    )
+                elif intervention_style == 1: # selling
+                    intervention_message = strategy.format(
+                        target_aspect='the tensions between ' + ', '.join(arguments_keywords),
+                        benefits=reason.replace('Because', 'because')
+                    )
+                elif intervention_style == 2: # participating
+                    intervention_message = f"Since we have discussed a lot on the tensions between {', '.join(arguments_keywords)}, I'd like to summarize the consensus we have reached: {original_consensus} Do you have any thoughts or suggestions on this summary?"
+                elif intervention_style == 3: # delegating
+                    intervention_message = strategy
+                else:
+                    raise ValueError(f"Invalid intervention style: {intervention_style}")
+
         # TODO: for phase 4.2, prompt users to post refliections directly.
         elif current_phase == 5: # phase 5: co-construction subphase 2
             parent_comment_id = None
-            intervention_message = 'test reply'
+
+            # summarize each tree as a phrase
+            arguments_text = '\n'.join([f"Argument {i}: {arg['argument']}" for i, arg in context['graph']['conflicts']['intra_tree'].items()])
+
+            prompt = f'''
+            You will be given a post, and a list of different arguments related to the post, each argument is related to one aspect. 
+            Your task is to summarize each argument in a concise way, like a short phrase.
+
+            The post is:
+            {post_information}
+
+            The arguments are:
+            {arguments_text}
+
+            Respond with a JSON object with this exact format:
+            {{
+                "argument_id": "argument_keyword",
+                "argument_id": "argument_keyword",
+                ...
+            }}
+            Where argument_id is an int, corresponding to the input.
+            '''
+            response = client.chat.completions.create(
+                model=arg.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are an expert in analyzing online discussions."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1
+            )
+            argument_phrases = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content))
+            tree_phrases = {str(each_argument_id): each_argument_keyword for each_argument_id, each_argument_keyword in argument_phrases.items()}
+            print(f"[generate_custom_response]🐞: tree_phrases = ")
+            pprint(tree_phrases)
+            all_conflicts = list(context['graph']['conflicts']['intra_tree'].keys()) + ["inter_tree"]
+            target_conflict = random.choice(all_conflicts)
+            print(f"[generate_custom_response]🐞: target_conflict = {target_conflict}")
+            if target_conflict == "inter_tree":
+                target_aspect = "the tensions between " + ", ".join(tree_phrases.values())
+                consensus = context['graph']['conflicts']['inter_tree']['consensus']
+            else:
+                target_aspect = tree_phrases[target_conflict]
+                consensus = context['graph']['conflicts']['intra_tree'][target_conflict]['consensus']
+            
+            if intervention_style == 0: # telling
+                intervention_message = strategy.format(
+                    target_aspect=target_aspect
+                )
+            elif intervention_style == 1: # selling
+                # prompt for benefits
+                prompt = f'''
+                You will be given a post, and one of the discussion aspects related to the post.
+                Your task is to encourage the readers to reflect on the discussion process on this aspect, including 1) reflection of the discussion process, 2) discussion of future applications of the discussion result.
+                Specifically, you need to give a reason why it is important to reflect or discuss the future applications of this aspect.
+
+                The post is:
+                {post_information}
+
+                The discussion aspect is:
+                {target_aspect}
+
+                Respond with a JSON object containing:
+                - "reason": string, the reason why it is important to reflect or discuss the future applications of this aspect. The format should be "Because <reason>."
+                '''
+                response = client.chat.completions.create(
+                    model=arg.OPENAI_MODEL,
+                    messages=[
+                        {"role": "system", "content": "You are an expert in analyzing online discussions."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.1
+                )
+                reason = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('reason', '')
+                intervention_message = strategy.format(
+                    target_aspect=target_aspect,
+                    benefits=reason.replace('Because', 'because')
+                )
+            elif intervention_style == 2: # participating
+                if target_conflict == "inter_tree":
+                    comments_text = '\n'.join([f"Comment {i+1}: {comment['body']}" for i, comment in enumerate(sorted(context['graph']['conflicts']['inter_tree']['comments'], key=lambda x: x['id']))])
+                else:
+                    comments_text = '\n'.join([f"Comment {i+1}: {comment['body']}" for i, comment in enumerate(sorted(context['graph']['conflicts']['intra_tree'][target_conflict]['comments'], key=lambda x: x['id']))])
+
+                # prompt for user comment
+                prompt = f'''
+                You will be given a post, and one of the discussion aspects related to the post.
+                Your task is to act like a user in this discussion, and, based on the discussion aspect, the comments related to this aspect, and the consensus reached so far, propose a new comment that is either 1) a reflection of the discussion process, 2) a discussion of future applications of the discussion result.
+
+                The post is:
+                {post_information}
+
+                The discussion aspect is:
+                {target_aspect}
+
+                The comments related to this aspect are:
+                {comments_text}
+
+                The consensus reached so far is:
+                {consensus}
+
+                Respond with a JSON object containing:
+                - "comment": string, the user-like comment reflecting the discussion process or discussing the future applications of the discussion result.
+                '''
+                response = client.chat.completions.create(
+                    model=arg.OPENAI_MODEL,
+                    messages=[
+                        {"role": "system", "content": "You are an expert in analyzing online discussions."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.1
+                )
+                comment = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('comment', '')
+                intervention_message = comment
+
+            elif intervention_style == 3: # delegating
+                intervention_message = strategy
+            else:
+                raise ValueError(f"Invalid intervention style: {intervention_style}")
 
         response = {
             'body': intervention_message,

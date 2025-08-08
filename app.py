@@ -203,6 +203,14 @@ def init():
 # 计时器超时回调函数
 def on_timeout_callback(timeout_info=None):
     global Current_context, Current_phase, Current_is_sufficient
+
+    if Current_context['phase'] == 6:
+        print(f"[on_timeout_callback]🐞: PHASE 6, no action needed")
+        timer_manager.stop_timer()
+        return
+
+    print(f"[on_timeout_callback]🐞: time_patience = {Current_context['time_patience']}, discussion_patience = {Current_context['discussion_patience']}")
+
     # 获得当前post的评论
     # GET /comments 
     
@@ -316,9 +324,9 @@ def on_timeout_callback(timeout_info=None):
             Current_context['comments'].append(comment_response_data) # only append the new comment sent by the bot
             # 更新数据库
             update_context_to_database()
-        elif Current_context['discussion_patience'] ==4:
+        elif Current_context['discussion_patience'] == 4:
             Current_context['discussion_patience'] = arg.MAX_PATIENCE
-        if Current_context['phase'] == 5:
+        if Current_context['phase'] == 6:
             # 到达终点
             timer_manager.stop_timer()
         update_context_to_database()

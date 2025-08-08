@@ -284,7 +284,7 @@ Content-Type: application/json
 
 - [ ] 重复评论会当做两个不同的argument
 
-- [ ] 所有有random的地方都输出一个log
+- [x] 所有有random的地方都输出一个log
 
 - [ ] 并发测试：60人同时post comments
 
@@ -293,16 +293,16 @@ Content-Type: application/json
 - [ ] comment phase analyzer: 如果之前已经有了Phase，则不重新分析
   但感觉没有那么必要
 
-- [ ] phase 3 consensus 分类
+- [x] phase 3 consensus 分类
   + 三种consensus的定义
 
-- [ ] phase 3 第二阶段的response generator
+- [x] phase 3 第二阶段的response generator
 
 - [x] phase 4 - 1 consensus type 加进Template
 
-- [ ] phase 4 - 2 for above mentioned consensus, please反思应用
+- [x] phase 4 - 2 for above mentioned consensus, please反思应用
 
-- [ ] phase 4 - 2 饱和判断条件（threshold条comment属于反思或应用）
+- [x] phase 4 - 2 饱和判断条件（threshold条comment属于反思或应用）
 
 - [ ] 运行bot 几个人测试一下
 
@@ -339,3 +339,5 @@ Content-Type: application/json
 - [x] In reply to:加换行 (build_chain)
 
 - [ ] 确定phase 2 sufficient criteria (现在用的比较宽松)
+
+- [ ] 所有输入comment list的地方按照id排序

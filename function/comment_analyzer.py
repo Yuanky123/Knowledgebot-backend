@@ -49,14 +49,14 @@ class CommentAnalyzer:
                 'description': '深入探讨，展开多维度分析'
             },
             'negotiation': {
-                'min_coverage_rate': 0.5,
+                'min_coverage_rate': 0.5, # TODO: Unused variable!!
                 'description': '处理分歧，寻求共识'
             },
             'co_construction': {
                 'min_comments': 3, # TODO: Unused variable!!
                 'description': '共同构建知识，整合观点'
             },
-            'co_constrction_subphase_2': {
+            'co_construction_subphase_2': {
                 'min_comments': 3,
                 'description': '反思及应用'
             }
@@ -295,11 +295,17 @@ class CommentAnalyzer:
         """
         context_text = formulate_tree(context, tree_id)
 
+        print(f"[extract_argument_and_counterargument]🐞: context_text = ")
+        print(context_text)
+
         prompt = f"""
         You are an expert discussion analyst. Given the following discussion, identify:
         1. The main argument (the central claim or position that most comments support or build upon).
         2. The main counterargument (the most significant statement that challenges, refutes, or provides an alternative perspective to the main argument).
         If there are multiple counterarguments, focus on the most representative one.
+
+        Note:
+        - Among the comments, there might be some comments asking for evidence, reasoning, or qualifier for a specific argument. These comments do not count as counterarguments.
 
         For each, provide the extracted text and a brief explanation of why you selected it.
         Respond in the following JSON format:
@@ -869,11 +875,16 @@ class CommentAnalyzer:
         return return_result
 
     def consensus_generate(self, intra_tree_conflicts, inter_tree_conflicts):
-        # TODO: Implement this function: generate consensus for each conflict.
+        print(f"🟢: In function [consensus_generate], intra_tree_conflicts = ")
+        pprint(intra_tree_conflicts)
+        print(f"inter_tree_conflicts = ")
+        pprint(inter_tree_conflicts)
+        # Implement this function: generate consensus for each conflict.
         # Params: intra_tree_conflicts: all intra tree conflicts. { 1: [ "argument": "...", "counterargument": "...", "comments": [ {comment_1}, {comment_2}, ... ] ] , 2: [ "argument": "...", "counterargument": "...", "comments": [ {comment_1}, {comment_2}, ... ] ] , ... }, inter_tree_conflicts: all inter tree conflicts. { 'dimensions': { 1: {'argument': '...', 'comments': [ {comment_1}, {comment_2}, ... ] } , 2: {'argument': '...', 'comments': [ {comment_1}, {comment_2}, ... ] } , ... }, 'comments': [ {comment_1}, {comment_2}, ... ] }
         # Return: a list of consensus for each conflict. { 'intra_tree': {1: consensus, 2: consensus, ...}, 'inter_tree': consensus }
         # The consensus is a list of comments that are related to the conflict.
 
+        # TODO: simplify the conflicts
         Prompt = f"""
         You are generating consensus for a conflict.
         The input is a list of conflicts and each conflict has a list of related comments:
@@ -911,7 +922,7 @@ class CommentAnalyzer:
                 {"role": "system", "content": "You are a helpful assistant that generates consensus for a conflict. Always respond with valid JSON format."},
                 {"role": "user", "content": Prompt}
             ],
-            max_tokens=400,
+            max_tokens=800,
             temperature=0.1
         )
 
@@ -923,11 +934,17 @@ class CommentAnalyzer:
             result_json = { "intra_tree": [], "inter_tree": "" }
         return_result = { "intra_tree": {}, "inter_tree": "" }
         for each_consensus in result_json['intra_tree']:
-            return_result['intra_tree'][each_consensus['conflict_order']] = each_consensus['consensus']
+            return_result['intra_tree'][str(each_consensus['conflict_order'])] = each_consensus['consensus']
         return_result['inter_tree'] = result_json['inter_tree']['consensus']
+        print(f"[consensus_generate]🐞: return_result = ")
+        pprint(return_result)
+        # should be:
+        # return_result = { "intra_tree": {'1': '...', '2': '...'}, 'inter_tree': '...' }
         return return_result
 
     def coverage_of_consensus(self, consensus, comments_in_phase_4):
+        print(f"🟢: In function [coverage_of_consensus], comments_in_phase_4 = ")
+        pprint(comments_in_phase_4)
         # TODO: Implement this function: determine if the comments in phase 4 cover the consensus.
         # Params: consensus:  list of consensus [consensus, 0:intra_tree/1:inter_tree]
         # Return: a list of coverage for each consensus. { 'intra_tree': {1: coverage, 2: coverage, ...}, 'inter_tree': {1: coverage, 2: coverage, ...}}
@@ -940,14 +957,22 @@ class CommentAnalyzer:
             else:
                 inter_tree_consensus.append(each_consensus[0])
 
+        intra_tree_consensus_text = '\n'.join([f"Consensus {i+1}: {each_consensus['consensus']}" for i, each_consensus in enumerate(intra_tree_consensus)])
+        inter_tree_consensus_text = '\n'.join([f"Consensus {i+1}: {each_consensus['consensus']}" for i, each_consensus in enumerate(inter_tree_consensus)])
+
+        print(f"[coverage_of_consensus]🐞: intra_tree_consensus_text = ")
+        print(intra_tree_consensus_text)
+        print(f"[coverage_of_consensus]🐞: inter_tree_consensus_text = ")
+        print(inter_tree_consensus_text)
+
         Prompt = f"""
         You are determining if a selected list of comments cover the consensus.
         The consensus is a list of consensus with intra-tree conflicts and the inter-tree conflict.
         Consensus of intra-tree conflicts:
-        {intra_tree_consensus}
+        {intra_tree_consensus_text}
 
         Consensus of the inter-tree conflict:
-        {inter_tree_consensus}
+        {inter_tree_consensus_text}
 
         The comments are:
         {comments_in_phase_4}
@@ -955,6 +980,8 @@ class CommentAnalyzer:
         You need to determine if the comments cover the consensus and give a reason for the scoring.
         The score is from 0 to 1 (0 = not covered, 1 = covered).
         The reason is a brief explanation for the scoring.
+
+        In your response, you must include evaluatio for EACH consensus.
 
         Respond with a JSON object in this exact format:
         {{
@@ -994,39 +1021,44 @@ class CommentAnalyzer:
             result_json = { "intra_tree": [], "inter_tree": {} }
         return_result = { "intra_tree": {}, "inter_tree": {} }
         for each_evaluation in result_json['intra_tree']:
-            return_result['intra_tree'][each_evaluation['conflict_order']] = { 'score': each_evaluation['score'], 'reason': each_evaluation['reason']}
+            return_result['intra_tree'][str(each_evaluation['conflict_order'])] = { 'score': each_evaluation['score'], 'reason': each_evaluation['reason']}
         if 'inter_tree' in result_json and result_json['inter_tree']:
             return_result['inter_tree'] = { 'score': result_json['inter_tree']['score'], 'reason': result_json['inter_tree']['reason']}
         else:
             return_result['inter_tree'] = { 'score': 0, 'reason': 'No inter-tree consensus coverage data' }
+        print(f"[coverage_of_consensus]🐞: return_result = ")
+        pprint(return_result)
         return return_result
 
     def extract_reflection_comments(self, context):
-        # TODO: Implement this function: extract reflection comments from the context.
+        print(f"🟢: In function [extract_reflection_comments]")
+        # Implement this function: extract reflection comments from the context.
         # Params: context: the context of the discussion.
         # Return: a list of reflection comments.
         # Use ChatGPT to feed into all phase 4 comments and extract all comments that are reflection of the discussion process or future applications of the dicussion result.
         phase_4_comments = self.extract_phase_x_comments(context, 4)
+        print(f"[extract_reflection_comments]🐞: phase_4_comments = ")
+        pprint(phase_4_comments)
         prompt = f"""
         You are extracting reflection comments from a discussion. This includes: 
         - Reflection statements of the discussion process
         - Discussion of future applications of the ideas and consensus of the discussion
 
-        You will be given a list of comments. For each comment, you need to determine if it is a reflection comment.
+        You will be given a list of comments. For each comment, you need to determine if it is a reflection comment (0 = not reflection, 1 = reflection).
 
         The comments are:
-        {context['comments']}
+        {phase_4_comments}
 
         Respond with a JSON object in this exact format:
         [
             {{
                 "comment_id": 1 | 2 | ..., # the id of the comment
-                "comment_body": "...", # the body of the comment
+                "reflection_score": 0 | 1, # the score of the reflection comment
                 "reason": "...", # the reason why this is a reflection comment
             }},
             {{
                 "comment_id": 1 | 2 | ..., # the id of the comment
-                "comment_body": "...", # the body of the comment
+                "reflection_score": 0 | 1, # the score of the reflection comment
                 "reason": "...", # the reason why this is a reflection comment
             }},
             ...
@@ -1038,7 +1070,7 @@ class CommentAnalyzer:
                 {"role": "system", "content": "You are a helpful assistant that extracts reflection comments from a discussion."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=400,
+            max_tokens=800,
             temperature=0.1
         )
         result_text = response.choices[0].message.content.strip()
@@ -1047,7 +1079,14 @@ class CommentAnalyzer:
         except Exception as e:
             print(f"Error parsing GPT response for reflection comments: {e}")
             result_json = []
-        return result_json
+        print(f"[extract_reflection_comments]🐞: result_json = ")
+        pprint(result_json)
+
+        # filter: only keep those with reflection_score = 1
+        result_json_reflection = [each_comment for each_comment in result_json if each_comment['reflection_score'] == 1]
+        print(f"[extract_reflection_comments]🐞: result_json_reflection = ")
+        pprint(result_json_reflection)
+        return result_json_reflection
 
     def add_to_graph(self, context, new_comments):
         print(f"🟢: In function [add_to_graph], new_comments (len={len(new_comments)}) = {new_comments}")
@@ -1204,7 +1243,7 @@ class CommentAnalyzer:
         while current_phase != 6:
             if current_phase == 0:
                 if len(new_comments) > 0:
-                    print(f"******************** Enter PHASE 1 ********************")
+                    print(f"**************************************** Enter PHASE 1 ****************************************")
                     new_discussion_phase = 1
                     new_discussion_patience = arg.MAX_PATIENCE
                 else:
@@ -1222,7 +1261,7 @@ class CommentAnalyzer:
                         phase_1_comments += 1
                 print(f"[check_discussion_sufficiency]🐞: phase_1_comments = {phase_1_comments}")
                 if phase_1_comments >= self.phase_criteria['initiation']['min_comments']:
-                    print(f"******************** Enter PHASE 2 ********************")
+                    print(f"**************************************** Enter PHASE 2 ****************************************")
                     new_discussion_phase = 2
                     new_discussion_patience = arg.MAX_PATIENCE
                 else:
@@ -1308,7 +1347,7 @@ class CommentAnalyzer:
                         print(f"[check_discussion_sufficiency]🐞: Tree {tid}\tTree scores: ")
                         pprint(context['graph']['tree_scores'][tid])
                     if all_trees_full:
-                        print(f"******************** Enter PHASE 3 ********************")
+                        print(f"**************************************** Enter PHASE 3 ****************************************")
                         new_discussion_phase = 3
                         new_discussion_patience = arg.MAX_PATIENCE
                     else:
@@ -1360,7 +1399,7 @@ class CommentAnalyzer:
                         context['graph']['conflicts']['inter_tree']['consensus_rating'] = inter_conflicts_consensus_rating
                     
                     print(f"[check_discussion_sufficiency]🐞: will check if PHASE 3 is sufficient ...")
-                    pprint(context['graph']['conflicts'])
+                    pprint(context['graph']['conflicts'], width=200)
                     # Advance phase only if all intra and inter-tree conflicts have consensus score >= 1 and all inter-tree conflict dimensions have score == 1
                     all_ok = True
                     for tid in list_tree_ids(context):
@@ -1374,7 +1413,7 @@ class CommentAnalyzer:
                     if context['graph']['conflicts']['inter_tree'].get('consensus_rating', {}).get('score', 0) < 1: # inter-tree must reach consensus
                         all_ok = False
                     if all_ok:
-                        print(f"******************** Enter PHASE 4 ********************")
+                        print(f"**************************************** Enter PHASE 4 ****************************************")
                         new_discussion_phase = 4
                         new_discussion_patience = arg.MAX_PATIENCE
                         # TODO: 进入阶段四，准备consensus
@@ -1393,12 +1432,12 @@ class CommentAnalyzer:
                 consensus_list = []
                 for tid, consensus_data in context['graph']['conflicts']['intra_tree'].items():
                     consensus_list.append([consensus_data, 0])
-                for tid, consensus_data in context['graph']['conflicts']['inter_tree']['dimensions'].items():
-                    consensus_list.append([consensus_data, 1])
+                consensus_list.append([context['graph']['conflicts']['inter_tree'], 1])
 
                 comments_in_phase_4 = self.extract_phase_x_comments(context, 4)
                 coverage_of_consensus = self.coverage_of_consensus(consensus_list, comments_in_phase_4)
-                # coverage_of_consensus: { 'intra_tree': {1:{ 'score': 0 | 1, 'reason': '...' }, 2:{ 'score': 0 | 1, 'reason': '...' }, ...}, 'inter_tree': {1:{ 'score': 0 | 1, 'reason': '...' }, 2:{ 'score': 0 | 1, 'reason': '...' }, ...}}
+                # coverage_of_consensus: { 'intra_tree': {1:{ 'score': 0 | 1, 'reason': '...' }, 2:{ 'score': 0 | 1, 'reason': '...' }, ...}, 'inter_tree': { 'score': 0 | 1, 'reason': '...' }}
+                context['graph']['coverage_of_consensus'] = coverage_of_consensus # save for later use
                 # 如果所有的consensus都覆盖了，则进入phase 5
                 all_covered = True
                 for tid, coverage in coverage_of_consensus['intra_tree'].items():
@@ -1409,6 +1448,7 @@ class CommentAnalyzer:
                     all_covered = False
                     break
                 if all_covered:
+                    print(f"**************************************** Enter PHASE 5 ****************************************")
                     new_discussion_phase = 5
                     new_discussion_patience = arg.MAX_PATIENCE
                 else:
@@ -1420,6 +1460,7 @@ class CommentAnalyzer:
                 print(f"[check_discussion_sufficiency]🐞: reflection_comments = {reflection_comments}")
                 context['reflection_comments'] = reflection_comments
                 if len(reflection_comments) > self.phase_criteria['co_construction_subphase_2']['min_comments']:
+                    print(f"**************************************** Finish PHASE 5 ****************************************")
                     new_discussion_phase = 6
                     new_discussion_patience = arg.MAX_PATIENCE
                 else:
