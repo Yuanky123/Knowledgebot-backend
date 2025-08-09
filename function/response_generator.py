@@ -43,11 +43,11 @@ class ResponseGenerator:
 
             parent_comment_id = None
             prompt = f'''
-            You will be given a post and a list of comments expressing different opinions on the post.
+            You will be given a post and a list of comments expressing different claims on the post.
             Your task is to:
             1. Extract the key aspects of all the comments. The "key aspects" should be concise, in a word or short phrase. It is not necessary to have a one-to-one correspondence between the key aspects and the comments. For example, two comments that are very similar in content can be summarized into one key aspect. However, you should not over-summarize the comments so that the key aspects are too few and too general.
-            2. Based on the existing comments and the post, propose a new angle of discussion which is independent from all the existing arguments. The new angle of discussion should be concise, in no more than 3 words.
-            3. Give a reason why this new angle is important to push the discussion forward.
+            2. Based on the existing comments and the post, propose a new claim distinct from existing claims. The new claim should be concise, in no more than 3 words.
+            3. Give a reason why this new claim is important to push the discussion forward.
 
             The post is:
             {post_information}
@@ -57,38 +57,39 @@ class ResponseGenerator:
 
             Respond with a JSON object containing:
             - "key_aspects": a list of key aspects of the arguments
-            - "new_angle_of_discussion": string, the new angle of discussion
-            - "reason": string, the reason why this new angle is important to push the discussion forward. The format should be "Because <reason>."
+            - "new_claim": string, the new claim distinct from existing claims.
+            - "reason": string, the reason why this new claim is important to push the discussion forward. The format should be "Because <reason>."
             '''
 
             response = client.chat.completions.create(
                 model=arg.OPENAI_MODEL,
                 messages=[
-                    {"role": "system", "content": "You are a helpful assistant that extracts key aspects of arguments and proposes new angles of discussion."},
+                    {"role": "system", "content": "You are a helpful assistant that extracts key aspects of arguments and proposes new claims for the discussion."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1
             )
             response = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content))
             existing_aspects = response.get('key_aspects', [])
-            new_angle = response.get('new_angle_of_discussion', '')
+            new_claim = response.get('new_claim', '')
             reason = response.get('reason', '')
 
             if intervention_style == 0: # telling
                 intervention_message = strategy.format(
                     existing_aspects="We have discussed " + ', '.join(existing_aspects) if len(existing_aspects) > 0 else "Seems like we have not discussed much yet",
-                    new_angle=new_angle
+                    new_claim=new_claim
                 )
             elif intervention_style == 1: # selling
                 intervention_message = strategy.format(
                     existing_aspects="We have discussed " + ', '.join(existing_aspects) if len(existing_aspects) > 0 else "Seems like we have not discussed much yet",
-                    new_angle=new_angle,
+                    new_claim=new_claim,
                     benefits=reason.replace('Because ', '')
                 )
             elif intervention_style == 2: # participating
                 prompt = f'''
-                You will be given a post, existing comments expressing different opinions on the post, and a new angle of discussion.
-                Your task is to, based on the new angle of discussion, generate a user-like comment proposing this new angle of discussion.
+                You will be given a post, existing comments expressing different claims on the post, and a new claim distinct from existing claims.
+                Your task is to, based on the new claim, present a new solution to the question in the post. 
+                In the end of your comment, to encourage other users to contribute just like you, please add an ending expression like "Who can provide more new claims or answers to this question?"
 
                 The post is:
                 {post_information}
@@ -96,16 +97,16 @@ class ResponseGenerator:
                 The existing arguments are:
                 {phase_1_comments_text}
 
-                The new angle of discussion is:
-                {new_angle}
+                The new claim is:
+                {new_claim}
 
                 Respond with a JSON object containing:
-                - "comment": string, the user-like comment proposing the new angle of discussion.
+                - "comment": string, the comment you are going to post presenting a new solution to the question in the post.
                 '''
                 response = client.chat.completions.create(
                     model=arg.OPENAI_MODEL,
                     messages=[
-                        {"role": "system", "content": "You are an expert in analyzing online discussions."},
+                        {"role": "system", "content": "You are a user in an online knowledge community, and you are going to contribute to a post."},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.1
@@ -129,26 +130,35 @@ class ResponseGenerator:
                 else:
                     print(f"[generate_custom_response]🐞: Tree {tid} is not sufficient, select it ...")
 
-                if score.get('evidence', {}).get('score', 0) == 0:
-                    target_argument = context['graph']['arguments'][tid]['argument']
-                    missing_support = 'evidence'
-                elif score.get('reasoning', {}).get('score', 0) == 0:
-                    target_argument = context['graph']['arguments'][tid]['argument']
-                    missing_support = 'reasoning'
-                elif score.get('qualifier', {}).get('score', 0) == 0:
-                    target_argument = context['graph']['arguments'][tid]['argument']
-                    missing_support = 'qualifier'
-                elif score.get('counterargument', {}).get('score', 0) == 1 and score.get('counterargument_evidence', {}).get('score', 0) == 0:
-                    target_argument = context['graph']['arguments'][tid]['counterargument']
-                    missing_support = 'evidence'
-                elif score.get('counterargument', {}).get('score', 0) == 1 and score.get('counterargument_reasoning', {}).get('score', 0) == 0:
-                    target_argument = context['graph']['arguments'][tid]['counterargument']
-                    missing_support = 'reasoning'
-                elif score.get('counterargument', {}).get('score', 0) == 1 and score.get('counterargument_qualifier', {}).get('score', 0) == 0:
-                    target_argument = context['graph']['arguments'][tid]['counterargument']
-                    missing_support = 'qualifier'
-                else:
-                    raise ValueError(f"Should not reach here")
+                # first randomly select one of the three dimensions: evidence, reasoning, qualifier (under argument)
+                target_dimension = random.choice(['evidence', 'reasoning', 'qualifier'])
+                while score.get(target_dimension, {}).get('score', 0) > 0:
+                    target_dimension = random.choice(['evidence', 'reasoning', 'qualifier'])
+                missing_support = target_dimension
+                target_argument = context['graph']['arguments'][tid]['argument']
+
+                # TODO: here we didn't consider counterargument's sufficiency
+                
+                # if score.get('evidence', {}).get('score', 0) == 0:
+                #     target_argument = context['graph']['arguments'][tid]['argument']
+                #     missing_support = 'evidence'
+                # elif score.get('reasoning', {}).get('score', 0) == 0:
+                #     target_argument = context['graph']['arguments'][tid]['argument']
+                #     missing_support = 'reasoning'
+                # elif score.get('qualifier', {}).get('score', 0) == 0:
+                #     target_argument = context['graph']['arguments'][tid]['argument']
+                #     missing_support = 'qualifier'
+                # elif score.get('counterargument', {}).get('score', 0) == 1 and score.get('counterargument_evidence', {}).get('score', 0) == 0:
+                #     target_argument = context['graph']['arguments'][tid]['counterargument']
+                #     missing_support = 'evidence'
+                # elif score.get('counterargument', {}).get('score', 0) == 1 and score.get('counterargument_reasoning', {}).get('score', 0) == 0:
+                #     target_argument = context['graph']['arguments'][tid]['counterargument']
+                #     missing_support = 'reasoning'
+                # elif score.get('counterargument', {}).get('score', 0) == 1 and score.get('counterargument_qualifier', {}).get('score', 0) == 0:
+                #     target_argument = context['graph']['arguments'][tid]['counterargument']
+                #     missing_support = 'qualifier'
+                # else:
+                #     raise ValueError(f"Should not reach here")
                 break
 
             print(f"[generate_custom_response]🐞: Intervention target (tid = {tid}, missing_support = {missing_support}): {target_argument}")
@@ -210,7 +220,8 @@ class ResponseGenerator:
                     benefits=benefits
                 )
             elif intervention_style == 2: # participating
-                # generate a user-like comment asking for more support on the missing dimension
+                # TODO: evidence, reasoning, qualifier: few-shot prompt; 所有涉及evidence, reasoning, qualifier的prompt都可以加上
+                # generate a comment providing support on the missing dimension
                 prompt = f'''
                 You will be given a post, and an argument in response to the post. However, the argument is insufficient in one of the following dimensions: evidence, reasoning, or qualifier.
                 The meaning of each dimension is as follows:
@@ -219,6 +230,8 @@ class ResponseGenerator:
                 - Qualifier: Words or phrases that indicate the strength, scope, or certainty of the argument (e.g., "usually", "sometimes", "might", "in most cases").
                 
                 Your task is to act like a user in this discussion, and provide support on the given missing dimension for the given argument.
+                In the end of your comment, to encourage other users to contribute just like you, please add an ending expression like "Who can provide more evidence/reasoning/qualifier for this argument?"
+
                 Note:
                 - The comment should be based on current argument and semantically related to it. 
                 
@@ -235,7 +248,7 @@ class ResponseGenerator:
                 response = client.chat.completions.create(
                     model=arg.OPENAI_MODEL,
                     messages=[
-                        {"role": "system", "content": "You are an expert in analyzing online discussions."},
+                        {"role": "system", "content": "You are a user in an online knowledge community, and you are going to contribute to a post."},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.1
@@ -303,7 +316,8 @@ class ResponseGenerator:
                     elif intervention_style == 2: # participating
                         prompt = f'''
                         You will be given a post, and a pair of conflicting arguments related to one same aspect.
-                        Your task is to act like a user in this discussion, and generate a comment trying to resolve the conflict.
+                        Your task is to generate a comment trying to resolve the conflict.
+                        In the end of your comment, to encourage other users to contribute just like you, please add an ending expression like "Does anyone have any thoughts on how to resolve this conflict?"
 
                         The post is:
                         {post_information}
@@ -314,12 +328,12 @@ class ResponseGenerator:
                         {target_tree['counterargument']}
                         
                         Respond with a JSON object containing:
-                        - "comment": string, the user-like comment trying to resolve the conflict.
+                        - "comment": string, the comment you are going to post trying to resolve the conflict.
                         '''
                         response = client.chat.completions.create(
                             model=arg.OPENAI_MODEL,
                             messages=[
-                                {"role": "system", "content": "You are an expert in analyzing online discussions."},
+                                {"role": "system", "content": "You are a user in an online knowledge community, and you are going to contribute to a post."},
                                 {"role": "user", "content": prompt}
                             ],
                             temperature=0.1
@@ -372,7 +386,8 @@ class ResponseGenerator:
                         prompt = f'''
                         You will be given a post, and a pair of conflicting arguments related to one same aspect, and comments related to this conflict.
                         This conflict has gone through a lot of discussions, but consensus still cannot be reached.
-                        Your task is to act like a user in this discussion, and based on existing comments, generate a new comment clarifying the current disagreement between the two sides, and ask for additional comments from the members to further clarify the disagreement.
+                        Your task is to, based on existing comments, generate a new comment clarifying the current disagreement between the two sides, and ask for additional comments from the members to further clarify the disagreement.
+                        In the end of your comment, to encourage other users to contribute just like you, please add an ending expression like "Does anyone have any thoughts or suggestions on this clarification?"
 
                         The post is:
                         {post_information}
@@ -388,15 +403,15 @@ class ResponseGenerator:
                         Your comment should be structured as:
                         1) state that disagreement exists (e.g. "It seems that <the topic> has not been reached a consensus.")
                         2) summarize the current disagreement shown in the comments (e.g. "<A> thinks xxx under condition xxx, but <B> thinks yyy under condition yyy.")
-                        3) ask for additional comments from the members to further clarify the disagreement. (e.g. "Do you have any thoughts or suggestions on this summary?")
+                        3) ask for additional comments from the members to further clarify the disagreement. (e.g. "Does anyone have any thoughts or suggestions on this summary?")
                         
                         Respond with a JSON object containing:
-                        - "comment": string, the user-like comment trying to clarify the current disagreement between the two sides.
+                        - "comment": string, the comment you are going to post trying to clarify the current disagreement between the two sides.
                         '''
                         response = client.chat.completions.create(
                             model=arg.OPENAI_MODEL,
                             messages=[
-                                {"role": "system", "content": "You are an expert in analyzing online discussions."},
+                                {"role": "system", "content": "You are a user in an online knowledge community, and you are going to contribute to a post."},
                                 {"role": "user", "content": prompt}
                             ],
                             temperature=0.1
@@ -456,7 +471,8 @@ class ResponseGenerator:
                     elif intervention_style == 2: # participating
                         prompt = f'''
                         You will be given a post, and a list of under-addressed arguments related to the post.
-                        Your task is to act like a user in this discussion, and generate a comment trying to include these under-addressed arguments into the negotiation process.
+                        Your task is to generate a comment trying to include these under-addressed arguments into the negotiation process.
+                        In the end of your comment, to encourage other users to contribute just like you, please add an ending expression like "Does anyone have any thoughts or suggestions on these arguments?"
 
                         The post is:
                         {post_information}
@@ -465,12 +481,12 @@ class ResponseGenerator:
                         {under_addressed_arguments_all}
                         
                         Respond with a JSON object containing:
-                        - "comment": string, the user-like comment trying to include these under-addressed arguments into the negotiation process.
+                        - "comment": string, the comment you are going to post trying to include these under-addressed arguments into the negotiation process.
                         '''
                         response = client.chat.completions.create(
                             model=arg.OPENAI_MODEL,
                             messages=[
-                                {"role": "system", "content": "You are an expert in analyzing online discussions."},
+                                {"role": "system", "content": "You are a user in an online knowledge community, and you are going to contribute to a post."},
                                 {"role": "user", "content": prompt}
                             ],
                             temperature=0.1
@@ -539,7 +555,8 @@ class ResponseGenerator:
                             prompt = f'''
                             You will be given a post, and a list of different arguments related to the post, each argument is related to one aspect. 
                             Different arguments are competing with each other, and consensus has not been reached.
-                            Your task is to act like a user in this discussion, and, based on existing comments, generate a new comment that is trying to reach a consensus among these arguments.
+                            Your task is to based on existing comments, generate a new comment that is trying to reach a consensus among these arguments.
+                            In the end of your comment, to encourage other users to contribute just like you, please add an ending expression like "Does anyone have any similar thoughts on how to negotiate between these arguments?"
 
                             The post is:
                             {post_information}
@@ -551,12 +568,12 @@ class ResponseGenerator:
                             {comments_text}
 
                             Respond with a JSON object containing:
-                            - "comment": string, the user-like comment trying to reach a consensus among these arguments.
+                            - "comment": string, the comment you are going to post trying to reach a consensus among these arguments.
                             '''
                             response = client.chat.completions.create(
                                 model=arg.OPENAI_MODEL,
                                 messages=[
-                                    {"role": "system", "content": "You are an expert in analyzing online discussions."},
+                                    {"role": "system", "content": "You are a user in an online knowledge community, and you are going to contribute to a post."},
                                     {"role": "user", "content": prompt}
                                 ],
                                 temperature=0.1
@@ -608,7 +625,8 @@ class ResponseGenerator:
                             prompt = f'''
                             You will be given a post, and a list of different arguments related to the post (each argument is related to one aspect), and comments that are trying to reach a consensus among these arguments.
                             Different arguments are competing with each other, and consensus has not been reached.
-                            Your task is to act like a user in this discussion, and, based on existing comments, generate a new comment clarifying the current disagreement, and ask for additional comments.
+                            Your task is to, based on existing comments, generate a new comment clarifying the current disagreement, and ask for additional comments.
+                            In the end of your comment, to encourage other users to contribute just like you, please add an ending expression like "Does anyone want to give a more detailed clarification on current disagreement?"
 
                             The post is:
                             {post_information}
@@ -622,15 +640,15 @@ class ResponseGenerator:
                             Your comment should be roughly structured as:
                             1) state that disagreement exists (e.g. "It seems that <the topic> has not been reached a consensus.")
                             2) summarize the current disagreement shown in the comments (e.g. "<A> thinks xxx under condition xxx, but <B> thinks yyy under condition yyy.")
-                            3) ask for additional comments from the members to further clarify the disagreement. (e.g. "Do you have any thoughts or suggestions on this summary?")
+                            3) ask for additional comments from the members to further clarify the disagreement. (e.g. "Does anyone have any thoughts or suggestions on this summary?")
 
                             Respond with a JSON object containing:
-                            - "comment": string, the user-like comment trying to clarify the current disagreement between the two sides.
+                            - "comment": string, the comment you are going to post trying to clarify the current disagreement between the two sides.
                             '''
                             response = client.chat.completions.create(
                                 model=arg.OPENAI_MODEL,
                                 messages=[
-                                    {"role": "system", "content": "You are an expert in analyzing online discussions."},
+                                    {"role": "system", "content": "You are a user in an online knowledge community, and you are going to contribute to a post."},
                                     {"role": "user", "content": prompt}
                                 ],
                                 temperature=0.1
@@ -702,7 +720,7 @@ class ResponseGenerator:
                             benefits=reason.replace('Because', 'because')
                         )
                     elif intervention_style == 2: # participating
-                        intervention_message = f"Since we have discussed a lot on {target_aspect}, I'd like to summarize the consensus we have reached: {original_consensus} Do you have any thoughts or suggestions on this summary?"
+                        intervention_message = f"Since we have discussed a lot on {target_aspect}, I'd like to summarize the consensus we have reached: {original_consensus} Does anyone have any thoughts or suggestions on this summary?"
                 elif intervention_style == 3: # delegating
                     intervention_message = strategy
                 else:
@@ -754,13 +772,13 @@ class ResponseGenerator:
                         benefits=reason.replace('Because', 'because')
                     )
                 elif intervention_style == 2: # participating
-                    intervention_message = f"Since we have discussed a lot on the tensions between {', '.join(arguments_keywords)}, I'd like to summarize the consensus we have reached: {original_consensus} Do you have any thoughts or suggestions on this summary?"
+                    intervention_message = f"Since we have discussed a lot on the tensions between {', '.join(arguments_keywords)}, I'd like to summarize the consensus we have reached: {original_consensus} Does anyone have any thoughts or suggestions on this summary?"
                 elif intervention_style == 3: # delegating
                     intervention_message = strategy
                 else:
                     raise ValueError(f"Invalid intervention style: {intervention_style}")
 
-        # TODO: for phase 4.2, prompt users to post refliections directly.
+        # for phase 4.2, prompt users to post refliections directly.
         elif current_phase == 5: # phase 5: co-construction subphase 2
             parent_comment_id = None
 
@@ -849,7 +867,8 @@ class ResponseGenerator:
                 # prompt for user comment
                 prompt = f'''
                 You will be given a post, and one of the discussion aspects related to the post.
-                Your task is to act like a user in this discussion, and, based on the discussion aspect, the comments related to this aspect, and the consensus reached so far, propose a new comment that is either 1) a reflection of the discussion process, 2) a discussion of future applications of the discussion result.
+                Your task is to, based on the discussion aspect, the comments related to this aspect, and the consensus reached so far, propose a new comment that is either 1) a reflection of the discussion process, 2) a discussion of future applications of the discussion result.
+                In the end of your comment, to encourage other users to contribute just like you, please add an ending expression like "Does anyone have any thoughths on the reflection or future applications of this discussion?"
 
                 The post is:
                 {post_information}
@@ -864,12 +883,12 @@ class ResponseGenerator:
                 {consensus}
 
                 Respond with a JSON object containing:
-                - "comment": string, the user-like comment reflecting the discussion process or discussing the future applications of the discussion result.
+                - "comment": string, the comment you are going to post reflecting the discussion process or discussing the future applications of the discussion result.
                 '''
                 response = client.chat.completions.create(
                     model=arg.OPENAI_MODEL,
                     messages=[
-                        {"role": "system", "content": "You are an expert in analyzing online discussions."},
+                        {"role": "system", "content": "You are a user in an online knowledge community, and you are going to contribute to a post."},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.1
@@ -881,6 +900,38 @@ class ResponseGenerator:
                 intervention_message = strategy
             else:
                 raise ValueError(f"Invalid intervention style: {intervention_style}")
+
+        if intervention_style in [0, 1, 2]:
+            # rewrite the intervention message in a more natural tone
+            print(f"[generate_custom_response]🐞: will rewrite the intervention message. Original intervention_message = {intervention_message}")
+
+            prompt = f'''
+            You are a bot in a online knowledge community. You will be posting a message in the discussion, under a specific post.
+            Your task is to rewrite the message in a more natural tone, while keeping the original meaning and structure.
+
+            The post is:
+            {post_information}
+
+            The message you will be posting is:
+            {intervention_message}
+
+            Note:
+            - Your comment should target at all users in the discussion, not a specific user. Thus, DO NOT user expressions like "you". Instead, if the original intervention message includes "you", you should rewrite it to more general expressions like "anyone".
+
+            Respond with a JSON object containing:
+            - "body": string, the rewritten message.
+            '''
+            response = client.chat.completions.create(
+                model=arg.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are an expert in analyzing online discussions."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1
+            )
+            intervention_message = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('body', '')
+
+            print(f"[generate_custom_response]🐞: rewriting finish, intervention_message = {intervention_message}")
 
         response = {
             'body': intervention_message,
