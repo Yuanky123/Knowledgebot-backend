@@ -341,3 +341,60 @@ Content-Type: application/json
 - [ ] 确定phase 2 sufficient criteria (现在用的比较宽松)
 
 - [ ] 所有输入comment list的地方按照id排序
+
+
+
+- [x] 三者随机: qualifier evidence reasoning
+
+
+- [x] LLM 重写generated message
+
+
+
+
+
+
+
+- [o] delegating 不需要LLM重写
+- [ ] delegating 只在每个阶段开始时发一条消息
+
+
+- [ ] participating 不能是问句
+
+- [o] Initiation措辞：new angle -> new claim distinct from existing claims
+
+- [o] Participating style prompt: 
+  - [o] {"role": "system", "content": "You are a user in an online knowledge community."},
+  - [o] no "user-like"
+  - [o] participating的结尾鼓励user参与/补充 Who can ....?
+
+- [o] 删掉“you”之类的用词,不用给人员的代指；anyone可以
+    solution: 在最后的改写prompt中
+
+- [ ] 确保bot的评论在任何情况下都不计入graph； 
+
+- [ ] phase 2 counter argument supporting factor也要3选2
+
+
+- [ ] fine-tune llm : reply 1: >= 2
+
+- [ ] coverage_of_consensus: 不考虑intra-tree with no counterargument
+
+- [ ] increase temperature for LLM
+
+concurrency
+- [x] LLM concurrent api cal
+    solution: use python 3.10+; 3.9 will raise error
+- [ ] -> backend
+- [ ] -> frontend
+
+- [ ] 莫名其妙出现的4个tree（yuanhao test的四个case之一）
+
+
+
+- [ ] 所有log 加timestamp
+
+
+
+
+ get phase x comments 的时候会不会把bot也考虑进去？
