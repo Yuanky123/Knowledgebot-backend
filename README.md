@@ -376,7 +376,7 @@ Content-Type: application/json
 - [ ] phase 2 counter argument supporting factor也要3选2
 
 
-- [ ] fine-tune llm : reply 1: >= 2
+- [x] fine-tune llm : reply 1: >= 2
 
 - [ ] coverage_of_consensus: 不考虑intra-tree with no counterargument
 

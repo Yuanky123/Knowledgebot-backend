@@ -114,6 +114,9 @@ class CommentAnalyzer:
                                 break
                     if parent_comment_phase is None:
                         parent_comment_phase = 0
+                    if parent_comment_phase == 1:
+                        parent_comment_phase = 2 # comments replying to phase 1 should be at least phase 2; 
+                        # but for other phases, comments replying to phase x should be at least phase x
                     final_prediction_phase = max(model_prediction_phase, parent_comment_phase) # fix bug: min -> max
                 
             new_comments[i]['message_phase'] = final_prediction_phase
