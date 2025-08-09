@@ -1,5 +1,5 @@
 {
-    "initiation": "{existing_aspects}. Now, please consider {new_angle} and share your thoughts, because {benefits}",
+    "initiation": "{existing_aspects}. Now, please consider {new_claim} and share your thoughts, because {benefits}",
     "exploration": "For the argument \"{target_argument}\", can anyone provide more {missing_support} for it? {benefits}",
     "negotiation": [
         "I noticed that there still exist some conflicts unresolved, for example, {conflicts}. Please share your thoughts on this conflict, {benefits}",
