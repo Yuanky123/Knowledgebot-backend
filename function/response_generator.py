@@ -67,7 +67,7 @@ class ResponseGenerator:
                     {"role": "system", "content": "You are a helpful assistant that extracts key aspects of arguments and proposes new claims for the discussion."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.1
+                temperature=1
             )
             response = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content))
             existing_aspects = response.get('key_aspects', [])
@@ -109,7 +109,7 @@ class ResponseGenerator:
                         {"role": "system", "content": "You are a user in an online knowledge community, and you are going to contribute to a post."},
                         {"role": "user", "content": prompt}
                     ],
-                    temperature=0.1
+                    temperature=1
                 )
                 intervention_message = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('comment', '')
             elif intervention_style == 3: # delegating
@@ -211,7 +211,7 @@ class ResponseGenerator:
                         {"role": "system", "content": "You are an expert in analyzing online discussions."},
                         {"role": "user", "content": prompt}
                     ],
-                    temperature=0.1
+                    temperature=1
                 )
                 benefits = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('benefits', '')
                 intervention_message = strategy.format(
@@ -251,7 +251,7 @@ class ResponseGenerator:
                         {"role": "system", "content": "You are a user in an online knowledge community, and you are going to contribute to a post."},
                         {"role": "user", "content": prompt}
                     ],
-                    temperature=0.1
+                    temperature=1
                 )
                 intervention_message = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('comment', '')
             elif intervention_style == 3: # delegating
@@ -299,7 +299,7 @@ class ResponseGenerator:
                             {"role": "system", "content": "You are an expert in analyzing online discussions."},
                             {"role": "user", "content": prompt}
                         ],
-                        temperature=0.1
+                        temperature=1
                     )
                     conflicts = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('conflicts', '')
                     benefits = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('benefits', '')
@@ -336,7 +336,7 @@ class ResponseGenerator:
                                 {"role": "system", "content": "You are a user in an online knowledge community, and you are going to contribute to a post."},
                                 {"role": "user", "content": prompt}
                             ],
-                            temperature=0.1
+                            temperature=1
                         )
                         comment = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('comment', '')
                         intervention_message = comment
@@ -371,7 +371,7 @@ class ResponseGenerator:
                                 {"role": "system", "content": "You are an expert in analyzing online discussions."},
                                 {"role": "user", "content": prompt}
                             ],
-                            temperature=0.1
+                            temperature=1
                         )
                         conflicts = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('conflicts', '')
 
@@ -414,7 +414,7 @@ class ResponseGenerator:
                                 {"role": "system", "content": "You are a user in an online knowledge community, and you are going to contribute to a post."},
                                 {"role": "user", "content": prompt}
                             ],
-                            temperature=0.1
+                            temperature=1
                         )
                         comment = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('comment', '')
                         intervention_message = comment
@@ -454,7 +454,7 @@ class ResponseGenerator:
                             {"role": "system", "content": "You are an expert in analyzing online discussions."},
                             {"role": "user", "content": prompt}
                         ],
-                        temperature=0.1
+                        temperature=1
                     )
                     under_addressed_arguments_keywords = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('under_addressed_arguments_keywords', [])
                     reason = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('reason', '')
@@ -489,7 +489,7 @@ class ResponseGenerator:
                                 {"role": "system", "content": "You are a user in an online knowledge community, and you are going to contribute to a post."},
                                 {"role": "user", "content": prompt}
                             ],
-                            temperature=0.1
+                            temperature=1
                         )
                         comment = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('comment', '')
                         intervention_message = comment
@@ -536,7 +536,7 @@ class ResponseGenerator:
                                     {"role": "system", "content": "You are an expert in analyzing online discussions."},
                                     {"role": "user", "content": prompt}
                                 ],
-                                temperature=0.1
+                                temperature=1
                             )
                             arguments_keywords = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('arguments_keywords', [])
                             reason = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('reason', '')
@@ -576,7 +576,7 @@ class ResponseGenerator:
                                     {"role": "system", "content": "You are a user in an online knowledge community, and you are going to contribute to a post."},
                                     {"role": "user", "content": prompt}
                                 ],
-                                temperature=0.1
+                                temperature=1
                             )
                             comment = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('comment', '')
                             intervention_message = comment
@@ -615,7 +615,7 @@ class ResponseGenerator:
                                     {"role": "system", "content": "You are an expert in analyzing online discussions."},
                                     {"role": "user", "content": prompt}
                                 ],
-                                temperature=0.1
+                                temperature=1
                             )
                             arguments_keywords = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('arguments_keywords', [])
                             intervention_message = strategy.format(
@@ -651,7 +651,7 @@ class ResponseGenerator:
                                     {"role": "system", "content": "You are a user in an online knowledge community, and you are going to contribute to a post."},
                                     {"role": "user", "content": prompt}
                                 ],
-                                temperature=0.1
+                                temperature=1
                             )
                             comment = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('comment', '')
                             intervention_message = comment
@@ -705,7 +705,7 @@ class ResponseGenerator:
                             {"role": "system", "content": "You are an expert in analyzing online discussions."},
                             {"role": "user", "content": prompt}
                         ],
-                        temperature=0.1
+                        temperature=1
                     )
                     target_aspect = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('target_aspect', '')
                     reason = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('reason', '')
@@ -757,7 +757,7 @@ class ResponseGenerator:
                         {"role": "system", "content": "You are an expert in analyzing online discussions."},
                         {"role": "user", "content": prompt}
                     ],
-                    temperature=0.1
+                    temperature=1
                 )
                 arguments_keywords = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('arguments_keywords', [])
                 reason = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('reason', '')
@@ -809,7 +809,7 @@ class ResponseGenerator:
                     {"role": "system", "content": "You are an expert in analyzing online discussions."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.1
+                temperature=1
             )
             argument_phrases = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content))
             tree_phrases = {str(each_argument_id): each_argument_keyword for each_argument_id, each_argument_keyword in argument_phrases.items()}
@@ -851,7 +851,7 @@ class ResponseGenerator:
                         {"role": "system", "content": "You are an expert in analyzing online discussions."},
                         {"role": "user", "content": prompt}
                     ],
-                    temperature=0.1
+                    temperature=1
                 )
                 reason = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('reason', '')
                 intervention_message = strategy.format(
@@ -891,7 +891,7 @@ class ResponseGenerator:
                         {"role": "system", "content": "You are a user in an online knowledge community, and you are going to contribute to a post."},
                         {"role": "user", "content": prompt}
                     ],
-                    temperature=0.1
+                    temperature=1
                 )
                 comment = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('comment', '')
                 intervention_message = comment
@@ -927,7 +927,7 @@ class ResponseGenerator:
                     {"role": "system", "content": "You are an expert in analyzing online discussions."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.1
+                temperature=1
             )
             intervention_message = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('body', '')
 

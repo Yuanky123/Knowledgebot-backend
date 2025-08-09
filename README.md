@@ -380,7 +380,7 @@ Content-Type: application/json
 
 - [ ] coverage_of_consensus: 不考虑intra-tree with no counterargument
 
-- [ ] increase temperature for LLM
+- [x] increase temperature for LLM
 
 concurrency
 - [x] LLM concurrent api cal
@@ -389,7 +389,6 @@ concurrency
 - [ ] -> frontend
 
 - [ ] 莫名其妙出现的4个tree（yuanhao test的四个case之一）
-
 
 
 - [ ] 所有log 加timestamp
