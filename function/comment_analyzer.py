@@ -949,7 +949,7 @@ class CommentAnalyzer:
     def coverage_of_consensus(self, consensus, comments_in_phase_4):
         print(f"🟢: In function [coverage_of_consensus], comments_in_phase_4 = ")
         pprint(comments_in_phase_4)
-        # TODO: Implement this function: determine if the comments in phase 4 cover the consensus.
+        # Implement this function: determine if the comments in phase 4 cover the consensus.
         # Params: consensus:  list of consensus [consensus, 0:intra_tree/1:inter_tree]
         # Return: a list of coverage for each consensus. { 'intra_tree': {1: coverage, 2: coverage, ...}, 'inter_tree': {1: coverage, 2: coverage, ...}}
         # The coverage is a list of comments that are related to the consensus.

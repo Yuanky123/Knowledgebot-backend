@@ -123,7 +123,6 @@ class ResponseGenerator:
             target_argument, missing_support = None, None
             for tid in random.sample(list(context['graph']['tree_scores'].keys()), len(context['graph']['tree_scores'])):
                 score = context['graph']['tree_scores'][tid]
-                # TODO: current loose sufficiency check
                 if (
                     score.get('evidence', {}).get('score', 0) + score.get('reasoning', {}).get('score', 0) + score.get('qualifier', {}).get('score', 0) >= 2
                 ) and (
@@ -269,7 +268,7 @@ class ResponseGenerator:
                     print(f"[generate_custom_response]🐞: Found unresolved intra-tree conflict {tid}! The tree {tid} is:")
                     break
             if target_tree != None: # find a intra-tree conflict
-                # TODO: if comment number < x: do original prompt, if comment number >= x: do new prompt that asks for clarified disagreements.
+                # if comment number < x: do original prompt, if comment number >= x: do new prompt that asks for clarified disagreements.
                 if len(target_tree['comments']) < arg.PHASE_3_CLARIFIED_DISAGREEMENT_THRESHOLD: 
                     print(f"[generate_custom_response]🐞: Comments number < {arg.PHASE_3_CLARIFIED_DISAGREEMENT_THRESHOLD}, using strategy[0] ...")
                     strategy = strategy[0]
