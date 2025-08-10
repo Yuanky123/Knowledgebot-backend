@@ -5,6 +5,8 @@ import os
 import arg
 import requests
 
+from email_utils import send_custom_email
+
 # 从function模块导入各个组件
 from function import CommentAnalyzer, InterventionManager, ResponseGenerator, TimerManager
 
@@ -262,6 +264,22 @@ def on_timeout_callback(timeout_info=None):
                 print(response)
                 # 发送给前端
                 # POST/comments
+                
+                # send email to arg.EMAIL_RECIPIENTS
+                for recipient in arg.EMAIL_RECIPIENTS:
+                    send_custom_email(
+                        to_email=recipient,
+                        subject=f'A new comment will be posted by the bot [{arg.USERNAME}]',
+                        body=f'The bot will post a comment: \n\n{response["body"]}\n\nIn post: {Current_context["post"]["title"]}\n\nPlease login to the server to approve or reject the comment.'
+                    )
+
+                human_command = None
+                while human_command not in ['Y', 'N']:
+                    human_command = input(f"The bot is about to post a comment: {response['body']}. Y/N?")
+                if human_command == 'N':
+                    print("Human command: N, no intervention")
+                    return
+                
                 comment_response = make_api_request('POST', f"{arg.FRONTEND_URL}/comments", json_data=response)
                 comment_response_data = comment_response.json()
                 # print(comment_response_data)
@@ -285,7 +303,9 @@ def on_timeout_callback(timeout_info=None):
         # due to the append() after the bot sends a comment, the new_added_comments are not always the latest comments. We need to find the new_added_comments by comparing the ids.
         current_context_comments_ids = [comment['id'] for comment in Current_context['comments']]
         new_added_comments = [comment for comment in new_comments if comment['id'] not in current_context_comments_ids]
-        assert len(new_added_comments) == len(new_comments) - len(Current_context['comments'])
+        # ignore those send by the bot from frontend
+        new_added_comments = [comment for comment in new_added_comments if comment['author_isbot'] == 'false']
+        # assert len(new_added_comments) == len(new_comments) - len(Current_context['comments'])
 
         # 步骤1：分析最新评论阶段
         new_added_comments_phase = analyzer.analyze_phase(Current_context, new_added_comments)
@@ -330,6 +350,22 @@ def on_timeout_callback(timeout_info=None):
                 print(response)
                 # 发送给前端
                 # POST/comments
+
+                # send email to arg.EMAIL_RECIPIENTS
+                for recipient in arg.EMAIL_RECIPIENTS:
+                    send_custom_email(
+                        to_email=recipient,
+                        subject=f'A new comment will be posted by the bot [{arg.USERNAME}]',
+                        body=f'The bot will post a comment: \n\n{response["body"]}\n\nIn post: {Current_context["post"]["title"]}\n\nPlease login to the server to approve or reject the comment.'
+                    )
+
+                human_command = None
+                while human_command not in ['Y', 'N']:
+                    human_command = input(f"The bot is about to post a comment: {response['body']}. Y/N?")
+                if human_command == 'N':
+                    print("Human command: N, no intervention")
+                    return
+                
                 comment_response = make_api_request('POST', f"{arg.FRONTEND_URL}/comments", json_data=response)
                 comment_response_data = comment_response.json()
                 if comment_response.status_code in [200, 201]:
