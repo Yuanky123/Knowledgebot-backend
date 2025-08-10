@@ -286,7 +286,7 @@ Content-Type: application/json
 
 - [x] 所有有random的地方都输出一个log
 
-- [ ] 并发测试：60人同时post comments
+- [x] 并发测试：60人同时post comments
 
 - [ ] 读写context，（加锁？）modify需要一个文件副本？interface?
 
@@ -356,7 +356,7 @@ Content-Type: application/json
 
 
 - [o] delegating 不需要LLM重写
-- [ ] delegating 只在每个阶段开始时发一条消息
+- [o] delegating 只在每个阶段开始时发一条消息
 
 
 - [o] participating 不能是问句; 但最后是号召大家参与
@@ -399,7 +399,30 @@ concurrency
 - [x] get phase x comments 的时候会不会把bot也考虑进去？
     会 已经修改成忽略所有bot comments
 
-update_context_to_database()
+- [x] update_context_to_database()
+
+- [x] analyze_connection_batch: 5 more
 
 
-history 5 more
+
+- [ ] gemini 2.5 flash
+
+
+
+
+rm Database/0.json; python -u app.py > pilot.log
+
+
+- [x] check human input: y/n; ignore [B^[[A^[[A^[[A^[[A^[[A^[[A^[[A^[[A^[[A^
+
+- [ ] print bot info in bash; 
+- [ ] print log to file
+之后再说
+
+- [ ] multi bot file read/write, args, using different files
+    直接复制多份folders
+
+- [ ] 所有prompt都加上post information
+
+
+- [ ] 

@@ -50,7 +50,7 @@ MAIL_USE_TLS = os.getenv('MAIL_USE_TLS', 'True').lower() == 'true'
 MAIL_USERNAME = os.getenv('MAIL_USERNAME', '')
 MAIL_PASSWORD = os.getenv('MAIL_PASSWORD', '')
 
-EMAIL_RECIPIENTS = ["2013654968@qq.com", "yzhangiy@connect.ust.hk", "1592744341@qq.com"]
+EMAIL_RECIPIENTS = ["2013654968@qq.com"] #, "yzhangiy@connect.ust.hk", "1592744341@qq.com"]
 
 # 环境标识
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')

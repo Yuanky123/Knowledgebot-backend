@@ -13,6 +13,10 @@ from .utils import build_parent_chain, extract_json_from_markdown, extract_menti
 from pprint import pprint
 import copy
 
+import sys
+sys.path.append('../')
+from email_utils import send_custom_email
+
 # Configure OpenAI client
 client = OpenAI(
     base_url='https://api.zhizengzeng.com/v1',
@@ -88,7 +92,7 @@ class CommentAnalyzer:
                     messages=messages,
                     model="mistralai/Mistral-7B-Instruct-v0.3"
                 )
-                print(f"Comment Classifier Response: {response.choices[0].message.content}")
+                print(f"Comment Classifier Response by Mistral-7B-Instruct-v0.3: {response.choices[0].message.content}")
                 try:
                     model_prediction_phase = int(response.choices[0].message.content)
                 except:
@@ -119,6 +123,23 @@ class CommentAnalyzer:
                         # but for other phases, comments replying to phase x should be at least phase x
                     final_prediction_phase = max(model_prediction_phase, parent_comment_phase) # fix bug: min -> max
                 
+            # email ask for approval
+            for recipient in arg.EMAIL_RECIPIENTS:
+                send_custom_email(
+                    recipient,
+                    f"Comment Phase {final_prediction_phase} - [{arg.USERNAME}]",
+                    body=f"Subreddit: {context['subreddit']}\nPost: {context['post']['title']}\nComment: {new_comments[i]['body']}\nPredicted phase: {final_prediction_phase}"
+                )
+            # require input or approval
+            input_phase = None
+            while input_phase not in [0,1,2,3,4]:
+                input_phase = input(f"Comment: {new_comments[i]['body']}\nClassified as phase {final_prediction_phase}\nPlease input the final prediction phase for comment {new_comments[i]['id']}: ")
+                if input_phase in ['0', '1', '2', '3', '4']:
+                    input_phase = int(input_phase)
+                else:
+                    print(f"Invalid input, please input 0, 1, 2, 3, or 4")
+            final_prediction_phase = int(input_phase)
+
             new_comments[i]['message_phase'] = final_prediction_phase
             new_comments_phase.append(final_prediction_phase)
 
@@ -302,8 +323,13 @@ class CommentAnalyzer:
         print(f"[extract_argument_and_counterargument]🐞: context_text = ")
         print(context_text)
 
+        post_information = f'''
+            Post Title: {context['post']['title']}
+            Post Body: {context['post']['body']}
+            '''
+
         prompt = f"""
-        You are an expert discussion analyst. Given the following discussion, identify:
+        You are an expert discussion analyst. Given the following post and related discussion, identify:
         1. The main argument (the central claim or position that most comments support or build upon).
         2. The main counterargument (the most significant statement that challenges, refutes, or provides an alternative perspective to the main argument).
         If there are multiple counterarguments, focus on the most representative one.
@@ -326,6 +352,9 @@ class CommentAnalyzer:
 
         Note that:
         - Providing alternative perspectives is not viewed as a counterargument. We only consider counterarguments that explicitly refute the argument.
+
+        Post:
+        {post_information}
 
         Discussion:
         {context_text}
@@ -1244,7 +1273,12 @@ class CommentAnalyzer:
         print(f"[add_to_graph]🐞: before exit, graph['edges'] = {graph['edges']}")
         return graph
 
-    def check_discussion_sufficiency(self, context, new_comments):
+    def check_discussion_sufficiency(self, context, new_comments, force_sufficient=False):
+        
+        if force_sufficient:
+            # necessary setup
+            return {'phase': context['phase'] + 1, 'patience': arg.MAX_PATIENCE}
+
         print(f"🟢: In function [check_discussion_sufficiency]")
         """检查当前阶段讨论是否充分"""
         current_phase = context['phase']

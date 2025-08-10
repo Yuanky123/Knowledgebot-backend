@@ -155,6 +155,7 @@ def login():
         # Extract and print the required fields
         if 'user' in result and 'selectedsubreddit' in result['user']:
             print(f"Selected Subreddit: {result['user']['selectedsubreddit']}")
+            Current_context['subreddit'] = result['user']['selectedsubreddit']
         
         if 'token' in result:
             print(f"Token: {result['token']}")
@@ -211,6 +212,30 @@ def on_timeout_callback(timeout_info=None):
         timer_manager.stop_timer()
         return
 
+    # first chck if external_command.txt
+    # format: subreddit name, current phase, command
+    # return suffficient: {'phase': new_discussion_phase, 'patience': new_discussion_patience}
+    with open('external_command.txt', 'r') as f:
+        commands = f.readlines()
+    for command in commands:
+        subreddit_name, current_phase, target_phase = command.replace('\n', '').split(',')
+        current_phase = int(current_phase)
+        target_phase = int(target_phase)
+        if subreddit_name == Current_context.get('subreddit', '') and current_phase == Current_context['phase'] and target_phase == current_phase + 1:
+            print(f"🌟🌟 Found matched external command: {subreddit_name}, {current_phase}, {target_phase}")
+            # call check_discussion_sufficiency, with arg force=True
+            analysis_result = analyzer.check_discussion_sufficiency(Current_context, [], force_sufficient=True)
+            Current_context['phase'] = analysis_result['phase']
+            Current_context['discussion_patience'] = analysis_result['patience']
+            update_context_to_database()
+
+            # 再调用一次check_discussion_sufficiency, complete necessary components
+            analysis_result = analyzer.check_discussion_sufficiency(Current_context, [])
+            Current_context['phase'] = analysis_result['phase']
+            Current_context['discussion_patience'] = analysis_result['patience']
+            update_context_to_database()
+            return
+
     # 获得当前post的评论
     # GET /comments 
     
@@ -262,6 +287,12 @@ def on_timeout_callback(timeout_info=None):
                 # 生成干预响应
                 response = response_generator.generate_custom_response(Current_context, intervention_strategy)
                 print(response)
+
+                if response['body'] == "IGNORE":
+                    print(f"[on_timeout_callback]🐞: Style = delegating, in phase 3.2, ignore intervention")
+                    update_context_to_database()
+                    return
+                
                 # 发送给前端
                 # POST/comments
                 
@@ -269,7 +300,7 @@ def on_timeout_callback(timeout_info=None):
                 for recipient in arg.EMAIL_RECIPIENTS:
                     send_custom_email(
                         to_email=recipient,
-                        subject=f'A new comment will be posted by the bot [{arg.USERNAME}]',
+                        subject=f'Bot Comment - [{arg.USERNAME}]',
                         body=f'The bot will post a comment: \n\n{response["body"]}\n\nIn post: {Current_context["post"]["title"]}\n\nPlease login to the server to approve or reject the comment.'
                     )
 
@@ -319,15 +350,12 @@ def on_timeout_callback(timeout_info=None):
 
         # 步骤2：检查当前应该协助的阶段
         original_discussion_phase = Current_context['phase']
-        print(f">>>>>>>>> new comments detected, original_discussion_phase = {original_discussion_phase}")
         analysis_result = analyzer.check_discussion_sufficiency(Current_context, new_added_comments)
         # Current_context['is_sufficient'] = analysis_result['is_sufficient']
         Current_context['comments'] = Current_context['comments'] + new_added_comments
         # [IMPORTANT] reset the new_added_comment to empty list
         Current_context['new_added_comment'] = []
         Current_context['discussion_patience'] = analysis_result['patience']
-        print(f">>>>>>>>> new comments detected, Current_context['phase'] = {Current_context['phase']}, analysis_result['phase'] = {analysis_result['phase']}")
-        print(f">>>>>>>>> new comments detected, Current_context['phase'] = {Current_context['phase']}, original_discussion_phase = {original_discussion_phase}")
         Current_context['phase'] = analysis_result['phase']
         update_context_to_database()
 
@@ -336,8 +364,6 @@ def on_timeout_callback(timeout_info=None):
                     Current_context['phase'] == 1 and len([comment for comment in Current_context['comments'] if comment['author_isbot'] == 'true']) > 0
                 )
             ):
-            if Current_context['style'] == 3:
-                print(f">>>>>>>>> delegating, previous phase = {original_discussion_phase}, current phase = {Current_context['phase']}")
             # 步骤3：决定是否需要干预和如何干预
             # 如果耐心值耗尽，则进行促进干预，不然不干预
             print(f"[Current time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]⏰: Time Patience: {Current_context['time_patience']} | Discussion Patience: {Current_context['discussion_patience']}")
@@ -348,6 +374,12 @@ def on_timeout_callback(timeout_info=None):
                 # 生成干预响应
                 response = response_generator.generate_custom_response(Current_context, intervention_strategy) 
                 print(response)
+
+                if response['body'] == "IGNORE":
+                    print(f"[on_timeout_callback]🐞: Style = delegating, in phase 3.2, ignore intervention")
+                    update_context_to_database()
+                    return
+
                 # 发送给前端
                 # POST/comments
 
@@ -355,7 +387,7 @@ def on_timeout_callback(timeout_info=None):
                 for recipient in arg.EMAIL_RECIPIENTS:
                     send_custom_email(
                         to_email=recipient,
-                        subject=f'A new comment will be posted by the bot [{arg.USERNAME}]',
+                        subject=f'Bot Comment - [{arg.USERNAME}]',
                         body=f'The bot will post a comment: \n\n{response["body"]}\n\nIn post: {Current_context["post"]["title"]}\n\nPlease login to the server to approve or reject the comment.'
                     )
 

@@ -415,7 +415,7 @@ class ResponseGenerator:
                         comment = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('comment', '')
                         intervention_message = comment
                     elif intervention_style == 3: # delegating
-                        intervention_message = strategy
+                        intervention_message = "IGNORE" # strategy
                     else:
                         raise ValueError(f"Invalid intervention style: {intervention_style}")
             else: # inter-tree conflict
@@ -652,7 +652,7 @@ class ResponseGenerator:
                             comment = json.loads(utils.extract_json_from_markdown(response.choices[0].message.content)).get('comment', '')
                             intervention_message = comment
                         elif intervention_style == 3: # delegating
-                            intervention_message = strategy
+                            intervention_message = "IGNORE" # strategy
                         else:
                             raise ValueError(f"Invalid intervention style: {intervention_style}")
 
