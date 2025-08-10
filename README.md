@@ -306,7 +306,7 @@ Content-Type: application/json
 
 - [ ] 运行bot 几个人测试一下
 
-- [ ] id_to_comment 变量 容易没考虑到new_added_comments
+- [o] id_to_comment 变量 容易没考虑到new_added_comments
 
 
 - [x] 提取counterargument有false positive: 
@@ -325,7 +325,7 @@ Content-Type: application/json
     - [ ] analyze_connection_batch中也可以加：(respond A: we can also consider B2 => group with B1?)
 
 
-- [ ] bot干预策略，random选择target的时候，尽量不要反复持续干预同一个点
+- [o] bot干预策略，random选择target的时候，尽量不要反复持续干预同一个点
 
 - [ ] argument score evaluation: 先输出原因再输出分数；给出三个dimension的定义？因为现在很明显的评论都分不出来 eg. The phrase 'I think' indicates a personal opinion, which serves as a qualifier for the strength of the main argument.', - 但还行
 
@@ -338,7 +338,7 @@ Content-Type: application/json
 
 - [x] In reply to:加换行 (build_chain)
 
-- [ ] 确定phase 2 sufficient criteria (现在用的比较宽松)
+- [x] 确定phase 2 sufficient criteria (现在用的比较宽松)
 
 - [ ] 所有输入comment list的地方按照id排序
 
@@ -359,7 +359,7 @@ Content-Type: application/json
 - [ ] delegating 只在每个阶段开始时发一条消息
 
 
-- [ ] participating 不能是问句
+- [o] participating 不能是问句; 但最后是号召大家参与
 
 - [o] Initiation措辞：new angle -> new claim distinct from existing claims
 
@@ -371,14 +371,14 @@ Content-Type: application/json
 - [o] 删掉“you”之类的用词,不用给人员的代指；anyone可以
     solution: 在最后的改写prompt中
 
-- [ ] 确保bot的评论在任何情况下都不计入graph； 
+- [o] 确保bot的评论在任何情况下都不计入graph； 
 
 - [o] phase 2 counter argument supporting factor也要3选2
 
 
 - [x] fine-tune llm : reply 1: >= 2
 
-- [ ] coverage_of_consensus: 不考虑intra-tree with no counterargument
+- [o] coverage_of_consensus: 不考虑intra-tree with no counterargument
 
 - [x] increase temperature for LLM
 
@@ -391,9 +391,15 @@ concurrency
 - [ ] 莫名其妙出现的4个tree（yuanhao test的四个case之一）
 
 
-- [ ] 所有log 加timestamp
+- [o] 所有log 加timestamp
+
+- [ ] evidence  reasoning qualifier: few-shot examples
 
 
+- [x] get phase x comments 的时候会不会把bot也考虑进去？
+    会 已经修改成忽略所有bot comments
+
+update_context_to_database()
 
 
- get phase x comments 的时候会不会把bot也考虑进去？
+history 5 more

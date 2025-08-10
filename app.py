@@ -209,8 +209,6 @@ def on_timeout_callback(timeout_info=None):
         timer_manager.stop_timer()
         return
 
-    print(f"[on_timeout_callback]🐞: time_patience = {Current_context['time_patience']}, discussion_patience = {Current_context['discussion_patience']}")
-
     # 获得当前post的评论
     # GET /comments 
     
@@ -247,7 +245,8 @@ def on_timeout_callback(timeout_info=None):
         # 如果时间阶段耐心值耗尽，则进行超时干预
         print("Time out and no new comments. Patience -1 ...")
         Current_context['time_patience'] = Current_context['time_patience'] - 1
-        print(f"⏰: Time Patience: {Current_context['time_patience']} | Discussion Patience: {Current_context['discussion_patience']}")
+        print(f"[Current time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]⏰: Time Patience: {Current_context['time_patience']} | Discussion Patience: {Current_context['discussion_patience']}")
+        update_context_to_database()
         if Current_context['time_patience'] <= 0:
 
             # 恢复时间阶段耐心值
@@ -303,7 +302,7 @@ def on_timeout_callback(timeout_info=None):
 
         # 步骤3：决定是否需要干预和如何干预
         # 如果耐心值耗尽，则进行促进干预，不然不干预
-        print(f"⏰: Time Patience: {Current_context['time_patience']} | Discussion Patience: {Current_context['discussion_patience']}")
+        print(f"[Current time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]⏰: Time Patience: {Current_context['time_patience']} | Discussion Patience: {Current_context['discussion_patience']}")
         if Current_context['discussion_patience'] <= 0:
             print("Discussion patience out. Start intervention...")
             # 进行超时干预
@@ -324,8 +323,8 @@ def on_timeout_callback(timeout_info=None):
             Current_context['comments'].append(comment_response_data) # only append the new comment sent by the bot
             # 更新数据库
             update_context_to_database()
-        elif Current_context['discussion_patience'] == 4:
-            Current_context['discussion_patience'] = arg.MAX_PATIENCE
+        # elif Current_context['discussion_patience'] == 4:
+        #     Current_context['discussion_patience'] = arg.MAX_PATIENCE
         if Current_context['phase'] == 6:
             # 到达终点
             timer_manager.stop_timer()

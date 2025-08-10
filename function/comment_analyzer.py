@@ -490,7 +490,7 @@ class CommentAnalyzer:
                 'id': c['id'],
                 'body': c['body'],
                 'author_name': c['author_name']
-            } for c in context.get('comments', [])+context.get('new_added_comment', []) if c.get('message_phase', 0) == phase]
+            } for c in context.get('comments', [])+context.get('new_added_comment', []) if c.get('message_phase', 0) == phase and c.get('author_isbot', 'false') == 'false']
 
     def map_phase3_comments_to_conflicts(self, phase3_comments, intra_tree_conflicts, inter_tree_conflicts):
         print(f"🟢: In function [map_phase3_comments_to_conflicts]")
@@ -1120,6 +1120,8 @@ class CommentAnalyzer:
         # Build a lookup for all comments (old and new) by id
         all_comments = {c['id']: c for c in (context.get('comments', []) + new_comments)}
         for comment in new_comments:
+            if comment["author_isbot"] == "true":
+                continue
             cid = comment['id']
             phase = comment.get('message_phase', 0)
             if phase in [0, 3, 4]:
@@ -1255,9 +1257,11 @@ class CommentAnalyzer:
                     print(f"**************************************** Enter PHASE 1 ****************************************")
                     new_discussion_phase = 1
                     new_discussion_patience = arg.MAX_PATIENCE
+                    print(f"[check_discussion_sufficiency]⏰: Enter PHASE 1, Discussion Patience: set back to {arg.MAX_PATIENCE}")
                 else:
                     new_discussion_phase = 0
                     new_discussion_patience = current_discussion_patience - len(new_comments)
+                    print(f"[check_discussion_sufficiency]⏰: Stay in PHASE 0, Discussion Patience -= {len(new_comments)}, Discussion Patience = {new_discussion_patience}")
                     break
             elif current_phase == 1:
                 #判断阶段一的评论是不是足够多
@@ -1273,9 +1277,11 @@ class CommentAnalyzer:
                     print(f"**************************************** Enter PHASE 2 ****************************************")
                     new_discussion_phase = 2
                     new_discussion_patience = arg.MAX_PATIENCE
+                    print(f"[check_discussion_sufficiency]⏰: Enter PHASE 2, Discussion Patience: set back to {arg.MAX_PATIENCE}")
                 else:
                     new_discussion_phase = 1
                     new_discussion_patience = current_discussion_patience - len(new_comments)
+                    print(f"[check_discussion_sufficiency]⏰: Stay in PHASE 1, Discussion Patience -= {len(new_comments)}, Discussion Patience = {new_discussion_patience}")
                     break
             elif current_phase == 2:
                 #判断阶段二每个tree是否都有讨论的各个部分
@@ -1362,9 +1368,11 @@ class CommentAnalyzer:
                         print(f"**************************************** Enter PHASE 3 ****************************************")
                         new_discussion_phase = 3
                         new_discussion_patience = arg.MAX_PATIENCE
+                        print(f"[check_discussion_sufficiency]⏰: Enter PHASE 3, Discussion Patience: set back to {arg.MAX_PATIENCE}")
                     else:
                         new_discussion_phase = 2
                         new_discussion_patience = current_discussion_patience - len(new_comments)
+                        print(f"[check_discussion_sufficiency]⏰: Stay in PHASE 2, Discussion Patience -= {len(new_comments)}, Discussion Patience = {new_discussion_patience}")
                         break
                 except Exception as e:
                     print("Error during sufficiency check of phase 2:", e)
@@ -1428,6 +1436,7 @@ class CommentAnalyzer:
                         print(f"**************************************** Enter PHASE 4 ****************************************")
                         new_discussion_phase = 4
                         new_discussion_patience = arg.MAX_PATIENCE
+                        print(f"[check_discussion_sufficiency]⏰: Enter PHASE 4, Discussion Patience: set back to {arg.MAX_PATIENCE}")
                         # 进入阶段四，准备consensus
                         consensus_list = self.consensus_generate(context['graph']['conflicts']['intra_tree'], context['graph']['conflicts']['inter_tree']['dimensions'])
                         for tid, consensus in consensus_list['intra_tree'].items():
@@ -1436,6 +1445,7 @@ class CommentAnalyzer:
                     else:
                         new_discussion_phase = 3
                         new_discussion_patience = current_discussion_patience - len(new_comments)
+                        print(f"[check_discussion_sufficiency]⏰: Stay in PHASE 3, Discussion Patience -= {len(new_comments)}, Discussion Patience = {new_discussion_patience}")
                         break
                 except Exception as e:
                     print('Error during sufficiency check of phase 3:', traceback.format_exc())
@@ -1453,7 +1463,7 @@ class CommentAnalyzer:
                 # 如果所有的consensus都覆盖了，则进入phase 5
                 all_covered = True
                 for tid, coverage in coverage_of_consensus['intra_tree'].items():
-                    if coverage['score'] < 1:
+                    if coverage['score'] < 1 and context['graph']['conflicts']['intra_tree'][tid]['counterargument'] != "":
                         all_covered = False
                         break
                 if coverage_of_consensus['inter_tree']['score'] < 1:
@@ -1463,9 +1473,11 @@ class CommentAnalyzer:
                     print(f"**************************************** Enter PHASE 5 ****************************************")
                     new_discussion_phase = 5
                     new_discussion_patience = arg.MAX_PATIENCE
+                    print(f"[check_discussion_sufficiency]⏰: Enter PHASE 5, Discussion Patience: set back to {arg.MAX_PATIENCE}")
                 else:
                     new_discussion_phase = 4
                     new_discussion_patience = current_discussion_patience - len(new_comments)
+                    print(f"[check_discussion_sufficiency]⏰: Stay in PHASE 4, Discussion Patience -= {len(new_comments)}, Discussion Patience = {new_discussion_patience}")
                     break
             elif current_phase == 5:
                 reflection_comments = self.extract_reflection_comments(context)
@@ -1475,9 +1487,11 @@ class CommentAnalyzer:
                     print(f"**************************************** Finish PHASE 5 ****************************************")
                     new_discussion_phase = 6
                     new_discussion_patience = arg.MAX_PATIENCE
+                    print(f"[check_discussion_sufficiency]⏰: Enter PHASE 5, Discussion Patience: set back to {arg.MAX_PATIENCE}")
                 else:
                     new_discussion_phase = 5
                     new_discussion_patience = current_discussion_patience - len(new_comments)
+                    print(f"[check_discussion_sufficiency]⏰: Stay in PHASE 5, Discussion Patience -= {len(new_comments)}, Discussion Patience = {new_discussion_patience}")
                     break
             current_phase = new_discussion_phase
         return {'phase': new_discussion_phase, 'patience': new_discussion_patience}

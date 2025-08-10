@@ -147,7 +147,7 @@ class ResponseGenerator:
                     argument_dimensions += ['counterargument_evidence', 'counterargument_reasoning', 'counterargument_qualifier']
                 if score.get('evidence', {}).get('score', 0) + score.get('reasoning', {}).get('score', 0) + score.get('qualifier', {}).get('score', 0) < 2:
                     argument_dimensions += ['evidence', 'reasoning', 'qualifier']
-                argument_dimensions = random.shuffle(argument_dimensions)
+                random.shuffle(argument_dimensions)
 
                 missing_support, target_argument = 'evidence', context['graph']['arguments'][tid]['argument']
                 for target_dimension in argument_dimensions:
