@@ -249,27 +249,34 @@ def on_timeout_callback(timeout_info=None):
         update_context_to_database()
         if Current_context['time_patience'] <= 0:
 
-            # 恢复时间阶段耐心值
-            Current_context['time_patience'] = arg.MAX_TIME_PATIENCE
-            # 进行超时干预
-            intervention_strategy = intervention_manager.intervene(Current_context)
-            # 生成干预响应
-            response = response_generator.generate_custom_response(Current_context, intervention_strategy)
-            print(response)
-            # 发送给前端
-            # POST/comments
-            comment_response = make_api_request('POST', f"{arg.FRONTEND_URL}/comments", json_data=response)
-            comment_response_data = comment_response.json()
-            # print(comment_response_data)
-            if comment_response.status_code in [200, 201]:
-                print("Comment posted successfully")
-            else:
-                print(f"Failed to post comment (no new comment detected): {comment_response.status_code}")
-            # 更新上下文
-            comment_response_data['message_phase'] = Current_context['phase'] if Current_context['style'] == 2 else 0
-            Current_context['comments'].append(comment_response_data) # only append the new comment sent by the bot
-            # 更新数据库
-            update_context_to_database()
+            # only intervene in style: telling, selling, participating
+            if (Current_context['style'] in [0, 1, 2]) or (
+                Current_context['style'] == 3 and Current_context['phase'] == 0 and len(Current_context['comments']) == 0
+            ):
+                # 恢复时间阶段耐心值
+                Current_context['time_patience'] = arg.MAX_TIME_PATIENCE
+                # 进行超时干预
+                intervention_strategy = intervention_manager.intervene(Current_context)
+                # 生成干预响应
+                response = response_generator.generate_custom_response(Current_context, intervention_strategy)
+                print(response)
+                # 发送给前端
+                # POST/comments
+                comment_response = make_api_request('POST', f"{arg.FRONTEND_URL}/comments", json_data=response)
+                comment_response_data = comment_response.json()
+                # print(comment_response_data)
+                if comment_response.status_code in [200, 201]:
+                    print("Comment posted successfully")
+                else:
+                    print(f"Failed to post comment (no new comment detected): {comment_response.status_code}")
+                # 更新上下文
+                comment_response_data['message_phase'] = Current_context['phase'] if Current_context['style'] == 2 else 0
+                Current_context['comments'].append(comment_response_data) # only append the new comment sent by the bot
+                # 更新数据库
+                update_context_to_database()
+            else: # Current_context['style'] == 3:
+                print(f"[on_timeout_callback]🐞: Style = delegating, no timeout intervention ...")
+                update_context_to_database()
         else:
             print(f"Current patience: {Current_context['time_patience']}")
             pass
@@ -291,44 +298,55 @@ def on_timeout_callback(timeout_info=None):
         Current_context['graph'] = analyzer.add_to_graph(Current_context, new_added_comments)
 
         # 步骤2：检查当前应该协助的阶段
+        original_discussion_phase = Current_context['phase']
+        print(f">>>>>>>>> new comments detected, original_discussion_phase = {original_discussion_phase}")
         analysis_result = analyzer.check_discussion_sufficiency(Current_context, new_added_comments)
         # Current_context['is_sufficient'] = analysis_result['is_sufficient']
         Current_context['comments'] = Current_context['comments'] + new_added_comments
         # [IMPORTANT] reset the new_added_comment to empty list
         Current_context['new_added_comment'] = []
         Current_context['discussion_patience'] = analysis_result['patience']
+        print(f">>>>>>>>> new comments detected, Current_context['phase'] = {Current_context['phase']}, analysis_result['phase'] = {analysis_result['phase']}")
+        print(f">>>>>>>>> new comments detected, Current_context['phase'] = {Current_context['phase']}, original_discussion_phase = {original_discussion_phase}")
         Current_context['phase'] = analysis_result['phase']
         update_context_to_database()
 
-        # 步骤3：决定是否需要干预和如何干预
-        # 如果耐心值耗尽，则进行促进干预，不然不干预
-        print(f"[Current time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]⏰: Time Patience: {Current_context['time_patience']} | Discussion Patience: {Current_context['discussion_patience']}")
-        if Current_context['discussion_patience'] <= 0:
-            print("Discussion patience out. Start intervention...")
-            # 进行超时干预
-            intervention_strategy = intervention_manager.intervene(Current_context)
-            # 生成干预响应
-            response = response_generator.generate_custom_response(Current_context, intervention_strategy) 
-            print(response)
-            # 发送给前端
-            # POST/comments
-            comment_response = make_api_request('POST', f"{arg.FRONTEND_URL}/comments", json_data=response)
-            comment_response_data = comment_response.json()
-            if comment_response.status_code in [200, 201]:
-                print("Comment posted successfully")
-            else:
-                print(f"Failed to post comment (new comment detected): {comment_response.status_code}")
-            # 更新上下文
-            comment_response_data['message_phase'] = Current_context['phase'] if Current_context['style'] == 2 else 0
-            Current_context['comments'].append(comment_response_data) # only append the new comment sent by the bot
-            # 更新数据库
+        if (Current_context['style'] in [0, 1, 2]) or (
+                Current_context['style'] == 3 and original_discussion_phase != Current_context['phase'] and not (
+                    Current_context['phase'] == 1 and len([comment for comment in Current_context['comments'] if comment['author_isbot'] == 'true']) > 0
+                )
+            ):
+            if Current_context['style'] == 3:
+                print(f">>>>>>>>> delegating, previous phase = {original_discussion_phase}, current phase = {Current_context['phase']}")
+            # 步骤3：决定是否需要干预和如何干预
+            # 如果耐心值耗尽，则进行促进干预，不然不干预
+            print(f"[Current time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]⏰: Time Patience: {Current_context['time_patience']} | Discussion Patience: {Current_context['discussion_patience']}")
+            if Current_context['discussion_patience'] <= 0 or Current_context['style'] == 3: # if style = delegating, do not care about discussion patience
+                print("Discussion patience out. Start intervention...")
+                # 进行超时干预
+                intervention_strategy = intervention_manager.intervene(Current_context)
+                # 生成干预响应
+                response = response_generator.generate_custom_response(Current_context, intervention_strategy) 
+                print(response)
+                # 发送给前端
+                # POST/comments
+                comment_response = make_api_request('POST', f"{arg.FRONTEND_URL}/comments", json_data=response)
+                comment_response_data = comment_response.json()
+                if comment_response.status_code in [200, 201]:
+                    print("Comment posted successfully")
+                else:
+                    print(f"Failed to post comment (new comment detected): {comment_response.status_code}")
+                # 更新上下文
+                comment_response_data['message_phase'] = Current_context['phase'] if Current_context['style'] == 2 else 0
+                Current_context['comments'].append(comment_response_data) # only append the new comment sent by the bot
+                # 更新数据库
+                update_context_to_database()
+            # elif Current_context['discussion_patience'] == 4:
+            #     Current_context['discussion_patience'] = arg.MAX_PATIENCE
+            if Current_context['phase'] == 6:
+                # 到达终点
+                timer_manager.stop_timer()
             update_context_to_database()
-        # elif Current_context['discussion_patience'] == 4:
-        #     Current_context['discussion_patience'] = arg.MAX_PATIENCE
-        if Current_context['phase'] == 6:
-            # 到达终点
-            timer_manager.stop_timer()
-        update_context_to_database()
     # return response
 
 # 初始化计时器管理器

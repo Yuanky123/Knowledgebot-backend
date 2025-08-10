@@ -929,6 +929,9 @@ class ResponseGenerator:
 
             print(f"[generate_custom_response]🐞: rewriting finish, intervention_message = {intervention_message}")
 
+        if intervention_style == 3: # delegating
+            parent_comment_id = None
+
         response = {
             'body': intervention_message,
             'post_id': context['post']['id'],
