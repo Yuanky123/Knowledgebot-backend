@@ -1,0 +1,16 @@
+# OAuth2 Email Authentication Dependencies
+
+# Google OAuth2 for Gmail
+google-auth==2.23.4
+google-auth-oauthlib==1.1.0
+google-auth-httplib2==0.1.1
+google-api-python-client==2.108.0
+
+# Microsoft OAuth2 for Outlook (optional)
+msal==1.25.0
+
+# Additional email libraries
+email-validator==2.1.0
+
+# For secure connections
+cryptography==41.0.7 
