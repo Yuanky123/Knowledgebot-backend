@@ -373,7 +373,7 @@ Content-Type: application/json
 
 - [ ] 确保bot的评论在任何情况下都不计入graph； 
 
-- [ ] phase 2 counter argument supporting factor也要3选2
+- [o] phase 2 counter argument supporting factor也要3选2
 
 
 - [x] fine-tune llm : reply 1: >= 2

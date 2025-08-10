@@ -124,41 +124,38 @@ class ResponseGenerator:
             for tid in random.sample(list(context['graph']['tree_scores'].keys()), len(context['graph']['tree_scores'])):
                 score = context['graph']['tree_scores'][tid]
                 # TODO: current loose sufficiency check
-                if score.get('evidence', {}).get('score', 0) + score.get('reasoning', {}).get('score', 0) + score.get('qualifier', {}).get('score', 0) >= 2:
+                if (
+                    score.get('evidence', {}).get('score', 0) + score.get('reasoning', {}).get('score', 0) + score.get('qualifier', {}).get('score', 0) >= 2
+                ) and (
+                    (
+                        score.get('counterargument', {}).get('score', 0) == 0
+                    ) or (
+                        score.get('counterargument_evidence', {}).get('score', 0) + score.get('counterargument_reasoning', {}).get('score', 0) + score.get('counterargument_qualifier', {}).get('score', 0) >= 2
+                    )
+                ):
                     print(f"[generate_custom_response]🐞: Tree {tid} is sufficient, skip ...")
                     continue
                 else:
                     print(f"[generate_custom_response]🐞: Tree {tid} is not sufficient, select it ...")
 
                 # first randomly select one of the three dimensions: evidence, reasoning, qualifier (under argument)
-                target_dimension = random.choice(['evidence', 'reasoning', 'qualifier'])
-                while score.get(target_dimension, {}).get('score', 0) > 0:
-                    target_dimension = random.choice(['evidence', 'reasoning', 'qualifier'])
-                missing_support = target_dimension
-                target_argument = context['graph']['arguments'][tid]['argument']
+                argument_dimensions = []
+                if (
+                    score.get('counterargument', {}).get('score', 0) == 1
+                ) and (
+                    score.get('counterargument_evidence', {}).get('score', 0) + score.get('counterargument_reasoning', {}).get('score', 0) + score.get('counterargument_qualifier', {}).get('score', 0) < 2
+                ):
+                    argument_dimensions += ['counterargument_evidence', 'counterargument_reasoning', 'counterargument_qualifier']
+                if score.get('evidence', {}).get('score', 0) + score.get('reasoning', {}).get('score', 0) + score.get('qualifier', {}).get('score', 0) < 2:
+                    argument_dimensions += ['evidence', 'reasoning', 'qualifier']
+                argument_dimensions = random.shuffle(argument_dimensions)
 
-                # TODO: here we didn't consider counterargument's sufficiency
-                
-                # if score.get('evidence', {}).get('score', 0) == 0:
-                #     target_argument = context['graph']['arguments'][tid]['argument']
-                #     missing_support = 'evidence'
-                # elif score.get('reasoning', {}).get('score', 0) == 0:
-                #     target_argument = context['graph']['arguments'][tid]['argument']
-                #     missing_support = 'reasoning'
-                # elif score.get('qualifier', {}).get('score', 0) == 0:
-                #     target_argument = context['graph']['arguments'][tid]['argument']
-                #     missing_support = 'qualifier'
-                # elif score.get('counterargument', {}).get('score', 0) == 1 and score.get('counterargument_evidence', {}).get('score', 0) == 0:
-                #     target_argument = context['graph']['arguments'][tid]['counterargument']
-                #     missing_support = 'evidence'
-                # elif score.get('counterargument', {}).get('score', 0) == 1 and score.get('counterargument_reasoning', {}).get('score', 0) == 0:
-                #     target_argument = context['graph']['arguments'][tid]['counterargument']
-                #     missing_support = 'reasoning'
-                # elif score.get('counterargument', {}).get('score', 0) == 1 and score.get('counterargument_qualifier', {}).get('score', 0) == 0:
-                #     target_argument = context['graph']['arguments'][tid]['counterargument']
-                #     missing_support = 'qualifier'
-                # else:
-                #     raise ValueError(f"Should not reach here")
+                missing_support, target_argument = 'evidence', context['graph']['arguments'][tid]['argument']
+                for target_dimension in argument_dimensions:
+                    if score.get(target_dimension, {}).get('score', 0) < 1:
+                        missing_support = target_dimension
+                        target_argument = context['graph']['arguments'][tid]['argument'] if 'counterargument' not in target_dimension else context['graph']['arguments'][tid]['counterargument']
+                        break
                 break
 
             print(f"[generate_custom_response]🐞: Intervention target (tid = {tid}, missing_support = {missing_support}): {target_argument}")

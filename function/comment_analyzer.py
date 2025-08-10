@@ -20,7 +20,7 @@ client = OpenAI(
     )
 
 local_client = OpenAI(
-    base_url="http://0.0.0.0:8000/v1", # TODO: change the base_url
+    base_url="http://0.0.0.0:8000/v1",
     api_key="0"
 )
 
@@ -494,7 +494,7 @@ class CommentAnalyzer:
 
     def map_phase3_comments_to_conflicts(self, phase3_comments, intra_tree_conflicts, inter_tree_conflicts):
         print(f"🟢: In function [map_phase3_comments_to_conflicts]")
-        # TODO: Implement this function: compare each phase 3 comment against all tree comments. 
+        # Implement this function: compare each phase 3 comment against all tree comments. 
         # Params: phase3_comments: all phase 3 comments
         # intra_tree_conflicts: all intra tree conflicts. { 1: {'argument': '...', 'counterargument': '...' }, 2: {'argument': '...', 'counterargument': '...' }, ... }
         # inter_tree_conflicts: all dimensions of inter tree conflicts. { 'dimensions': { 1: {'argument': '...' ] }, 2: {'argument': '...' }, ... }, 'comments': [ {comment_1}, {comment_2}, ... ] }
@@ -620,7 +620,7 @@ class CommentAnalyzer:
         return return_result
 
     def map_phase3_comments_to_inter_conflict_dimensions(self, inter_tree_conflicts):
-        # TODO: Implement this function: compare each phase 3 comment against all inter tree dimensions. 
+        # Implement this function: compare each phase 3 comment against all inter tree dimensions. 
         # Params: inter_tree_conflicts: all dimensions of inter tree conflicts. { 'dimensions': { 1: {'argument': '...' ] }, 2: {'argument': '...' }, ... }, 'comments': [ {comment_1}, {comment_2}, ... ] }
         # For each dimension of the conflict let GPT give a score of whether the comment is related to it or not (0 or 1) with a reason.
         # I suggest only query GPT once and let GPT rate all connections since it might hallucinate and give all 1 scores if you compare with only one dimension each time.
@@ -827,7 +827,7 @@ class CommentAnalyzer:
     def determine_coverage_of_inter_conflicts(self, inter_tree_conflicts):
         print(f"🟢: In function [determine_coverage_of_inter_conflicts], inter_tree_conflicts = ")
         pprint(inter_tree_conflicts)
-        # TODO: Implemenet this function: get all phase 3 comments related to this conflict and for each dimension determine whether the phase 3 comments cover it.
+        # Implemenet this function: get all phase 3 comments related to this conflict and for each dimension determine whether the phase 3 comments cover it.
         # Params: inter_tree_conflicts: all inter tree conflicts. { 'dimensions': { 1: {'argument': '...', 'comments': [ {comment_1}, {comment_2}, ... ] } , 2: {'argument': '...', 'comments': [ {comment_1}, {comment_2}, ... ] } , ... }, 'comments': [ {comment_1}, {comment_2}, ... ] }
         # Score from 0 to 1 (0 = not covered, 1 = covered) and let GPT give a reason for the scoring.
         # Return { 1: { 'score': 0, 'reason': '...' } , 2: { 'score': 1, 'reason': '...' } , ... }
@@ -1286,6 +1286,7 @@ class CommentAnalyzer:
                         context['graph']['arguments'] = {}
                     if 'tree_scores' not in context['graph']:
                         context['graph']['tree_scores'] = {}
+
                     all_trees_full = True
                     for tid in tree_ids:
                         # INT2STR
@@ -1337,15 +1338,17 @@ class CommentAnalyzer:
                         #     )
                         # ):
                         #     all_trees_full = False
-                        # sufficiency check: Two of the three dimensions of an argument are present # TODO: this is loose
+                        # sufficiency check: Two of the three dimensions of an argument are present; 2 of the 3 dimensions of counterargument are present (if counterargument is present)
                         if not (
-                            # argument + counterargument is present
-                            # ( # only argument is present, in this case we need 2 of the 3 dimensions to be present
+                            ( # only argument is present, in this case we need 2 of the 3 dimensions to be present
                                 score.get('evidence', {}).get('score', 0) + score.get('reasoning', {}).get('score', 0) + score.get('qualifier', {}).get('score', 0) >= 2
-                            # ) or (
-                            #     # argument + counterargument is present, in this case we need 
-                            #     score.get('argument', {}).get('score', 0) == 1 and
-                            # )
+                            ) and (
+                                (
+                                    score.get('counterargument', {}).get('score', 0) == 0
+                                ) or (
+                                    score.get('counterargument_evidence', {}).get('score', 0) + score.get('counterargument_reasoning', {}).get('score', 0) + score.get('counterargument_qualifier', {}).get('score', 0) >= 2
+                                )
+                            )
                         ):
                             all_trees_full = False
                             print(f"[check_discussion_sufficiency]🐞: Tree {tid} is not full")
@@ -1425,7 +1428,7 @@ class CommentAnalyzer:
                         print(f"**************************************** Enter PHASE 4 ****************************************")
                         new_discussion_phase = 4
                         new_discussion_patience = arg.MAX_PATIENCE
-                        # TODO: 进入阶段四，准备consensus
+                        # 进入阶段四，准备consensus
                         consensus_list = self.consensus_generate(context['graph']['conflicts']['intra_tree'], context['graph']['conflicts']['inter_tree']['dimensions'])
                         for tid, consensus in consensus_list['intra_tree'].items():
                             context['graph']['conflicts']['intra_tree'][tid]['consensus'] = consensus
