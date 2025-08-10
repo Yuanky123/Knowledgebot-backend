@@ -393,6 +393,11 @@ class CommentAnalyzer:
         - Evidence: Factual information, data, examples, or references that support the counterargument. Reply to other's comments is NOT evidence.
         - Reasoning: Logical connections, explanations, or justifications that link evidence to the counterargument or show how conclusions are drawn.
         - Qualifier: Words or phrases that indicate the strength, scope, or certainty of the counterargument (e.g., "usually", "sometimes", "might", "in most cases").
+        For example, for the argument or claim "I am a British citizen" made by a person:
+        - The evidence could be: "I was born in Bermuda".
+        - The reasoning could be: "A man born in Bermuda will legally be a British citizen".
+        - The qualifier could be: "I am a British citizen, presumably" (This has a lower degree of force than "I am definitely a British citizen").
+
         For each dimension, provide a score of 0 or 1 (0 = not present, 1 = present), and a brief explanation for your score. 
         
         Discussion:
@@ -447,6 +452,10 @@ class CommentAnalyzer:
         - Evidence: Factual information, data, examples, or references that support the main claim or argument in the discussion. Reply to other's comments is NOT evidence.
         - Reasoning: Logical connections, explanations, or justifications that link evidence to the main claim or argument, or show how conclusions of the main claim or argument are drawn.
         - Qualifier: Words or phrases that indicate the strength, scope, or certainty of the main claim or argument (e.g., "usually", "sometimes", "might", "in most cases").
+        For example, for the argument or claim "I am a British citizen" made by a person:
+        - The evidence could be: "I was born in Bermuda".
+        - The reasoning could be: "A man born in Bermuda will legally be a British citizen".
+        - The qualifier could be: "I am a British citizen, presumably" (This has a lower degree of force than "I am definitely a British citizen").
 
         Discussion:
         {context_text}

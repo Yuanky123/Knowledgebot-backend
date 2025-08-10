@@ -183,6 +183,10 @@ class ResponseGenerator:
                 - Evidence: Factual information, data, examples, or references that support the argument.
                 - Reasoning: Logical connections, explanations, or justifications that link evidence to the argument, or show how conclusions of the argument are drawn.
                 - Qualifier: Words or phrases that indicate the strength, scope, or certainty of the argument (e.g., "usually", "sometimes", "might", "in most cases").
+                For example, for the argument or claim "I am a British citizen" made by a person:
+                - The evidence could be: "I was born in Bermuda".
+                - The reasoning could be: "A man born in Bermuda will legally be a British citizen".
+                - The qualifier could be: "I am a British citizen, presumably" (This has a lower degree of force than "I am definitely a British citizen").
 
                 Your task is to persuade the readers to provide more support on the missing dimension for the argument. 
                 Specifically, you should output the benefits of adding this missing dimension to the argument.
@@ -224,6 +228,10 @@ class ResponseGenerator:
                 - Evidence: Factual information, data, examples, or references that support the argument.
                 - Reasoning: Logical connections, explanations, or justifications that link evidence to the argument, or show how conclusions of the argument are drawn.
                 - Qualifier: Words or phrases that indicate the strength, scope, or certainty of the argument (e.g., "usually", "sometimes", "might", "in most cases").
+                For example, for the argument or claim "I am a British citizen" made by a person:
+                - The evidence could be: "I was born in Bermuda".
+                - The reasoning could be: "A man born in Bermuda will legally be a British citizen".
+                - The qualifier could be: "I am a British citizen, presumably" (This has a lower degree of force than "I am definitely a British citizen").
                 
                 Your task is to act like a user in this discussion, and provide support on the given missing dimension for the given argument.
                 In the end of your comment, to encourage other users to contribute just like you, please add an ending expression like "Who can provide more evidence/reasoning/qualifier for this argument?"
