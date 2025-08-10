@@ -76,6 +76,13 @@ class CommentAnalyzer:
         # 输出：当前评论的阶段(list)，并返回给前端
 
         # new_comments_phase = [1] * len(new_comments)
+        # email ask for approval
+        for recipient in arg.EMAIL_RECIPIENTS:
+            send_custom_email(
+                recipient,
+                f"{len(new_comments)} Comments Need Phase Verification - [{arg.USERNAME}]",
+                body=f"Subreddit: {context['subreddit']}\nPost: {context['post']['title']}\n"
+            )
         
         new_comments_phase = []
         for i in range(len(new_comments)):
@@ -123,13 +130,6 @@ class CommentAnalyzer:
                         # but for other phases, comments replying to phase x should be at least phase x
                     final_prediction_phase = max(model_prediction_phase, parent_comment_phase) # fix bug: min -> max
                 
-            # email ask for approval
-            for recipient in arg.EMAIL_RECIPIENTS:
-                send_custom_email(
-                    recipient,
-                    f"Comment Phase {final_prediction_phase} - [{arg.USERNAME}]",
-                    body=f"Subreddit: {context['subreddit']}\nPost: {context['post']['title']}\nComment: {new_comments[i]['body']}\nPredicted phase: {final_prediction_phase}"
-                )
             # require input or approval
             input_phase = None
             while input_phase not in [0,1,2,3,4]:
@@ -1292,9 +1292,9 @@ class CommentAnalyzer:
         """检查当前阶段讨论是否充分"""
         current_phase = context['phase']
         # current_is_sufficient = context['is_sufficient']
-        current_discussion_patience = context['discussion_patience']
+        # current_discussion_patience = context['discussion_patience']
         new_discussion_phase = current_phase
-        new_discussion_patience = current_discussion_patience
+        new_discussion_patience = context['discussion_patience']
         # new_is_sufficient = current_is_sufficient
         while current_phase != 6:
             if current_phase == 0:
@@ -1305,7 +1305,7 @@ class CommentAnalyzer:
                     print(f"[check_discussion_sufficiency]⏰: Enter PHASE 1, Discussion Patience: set back to {arg.MAX_PATIENCE}")
                 else:
                     new_discussion_phase = 0
-                    new_discussion_patience = current_discussion_patience - len(new_comments)
+                    new_discussion_patience = new_discussion_patience - len(new_comments)
                     print(f"[check_discussion_sufficiency]⏰: Stay in PHASE 0, Discussion Patience -= {len(new_comments)}, Discussion Patience = {new_discussion_patience}")
                     break
             elif current_phase == 1:
@@ -1325,7 +1325,7 @@ class CommentAnalyzer:
                     print(f"[check_discussion_sufficiency]⏰: Enter PHASE 2, Discussion Patience: set back to {arg.MAX_PATIENCE}")
                 else:
                     new_discussion_phase = 1
-                    new_discussion_patience = current_discussion_patience - len(new_comments)
+                    new_discussion_patience = new_discussion_patience - len(new_comments)
                     print(f"[check_discussion_sufficiency]⏰: Stay in PHASE 1, Discussion Patience -= {len(new_comments)}, Discussion Patience = {new_discussion_patience}")
                     break
             elif current_phase == 2:
@@ -1416,7 +1416,7 @@ class CommentAnalyzer:
                         print(f"[check_discussion_sufficiency]⏰: Enter PHASE 3, Discussion Patience: set back to {arg.MAX_PATIENCE}")
                     else:
                         new_discussion_phase = 2
-                        new_discussion_patience = current_discussion_patience - len(new_comments)
+                        new_discussion_patience = new_discussion_patience - len(new_comments)
                         print(f"[check_discussion_sufficiency]⏰: Stay in PHASE 2, Discussion Patience -= {len(new_comments)}, Discussion Patience = {new_discussion_patience}")
                         break
                 except Exception as e:
@@ -1489,7 +1489,7 @@ class CommentAnalyzer:
                         context['graph']['conflicts']['inter_tree']['consensus'] = consensus_list['inter_tree']
                     else:
                         new_discussion_phase = 3
-                        new_discussion_patience = current_discussion_patience - len(new_comments)
+                        new_discussion_patience = new_discussion_patience - len(new_comments)
                         print(f"[check_discussion_sufficiency]⏰: Stay in PHASE 3, Discussion Patience -= {len(new_comments)}, Discussion Patience = {new_discussion_patience}")
                         break
                 except Exception as e:
@@ -1521,7 +1521,7 @@ class CommentAnalyzer:
                     print(f"[check_discussion_sufficiency]⏰: Enter PHASE 5, Discussion Patience: set back to {arg.MAX_PATIENCE}")
                 else:
                     new_discussion_phase = 4
-                    new_discussion_patience = current_discussion_patience - len(new_comments)
+                    new_discussion_patience = new_discussion_patience - len(new_comments)
                     print(f"[check_discussion_sufficiency]⏰: Stay in PHASE 4, Discussion Patience -= {len(new_comments)}, Discussion Patience = {new_discussion_patience}")
                     break
             elif current_phase == 5:
@@ -1535,7 +1535,7 @@ class CommentAnalyzer:
                     print(f"[check_discussion_sufficiency]⏰: Enter PHASE 5, Discussion Patience: set back to {arg.MAX_PATIENCE}")
                 else:
                     new_discussion_phase = 5
-                    new_discussion_patience = current_discussion_patience - len(new_comments)
+                    new_discussion_patience = new_discussion_patience - len(new_comments)
                     print(f"[check_discussion_sufficiency]⏰: Stay in PHASE 5, Discussion Patience -= {len(new_comments)}, Discussion Patience = {new_discussion_patience}")
                     break
             current_phase = new_discussion_phase
