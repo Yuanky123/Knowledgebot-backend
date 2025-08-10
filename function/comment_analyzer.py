@@ -1181,7 +1181,7 @@ class CommentAnalyzer:
                         print(f"[add_to_graph]🐞: Found {len(candidate_comments)} recent comments by mentioned user @{mentioned_user}")
                         print(f"[add_to_graph]🐞: candidate_comments = {candidate_comments}")
                     else:
-                        # Get most recent 5 comments
+                        # Get most recent 10 comments
                         recent_comments = []
                         for past_node in nodes:
                             past_id = past_node['id']
@@ -1189,12 +1189,14 @@ class CommentAnalyzer:
                                 continue
                             if past_node.get('phase', 0) not in [1, 2]:
                                 continue
+                            if past_node.get('author_isbot', 'false') == 'true':
+                                continue
                             past_comment = all_comments.get(past_id, past_node)
                             recent_comments.append(past_comment)
                         
-                        # Sort by ID (assuming higher ID = more recent) and get top 5
+                        # Sort by ID (assuming higher ID = more recent) and get top 10
                         recent_comments.sort(key=lambda x: x.get('id', 0), reverse=True)
-                        candidate_comments = recent_comments[:5]
+                        candidate_comments = recent_comments[:10]
                         print(f"[add_to_graph]🐞: Analyzing against {len(candidate_comments)} most recent comments")
                         print(f"[add_to_graph]🐞: candidate_comments = {candidate_comments}")
                     
