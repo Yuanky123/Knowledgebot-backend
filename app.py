@@ -319,7 +319,7 @@ def on_timeout_callback(timeout_info=None):
                 else:
                     print(f"Failed to post comment (no new comment detected): {comment_response.status_code}")
                 # 更新上下文
-                comment_response_data['message_phase'] = Current_context['phase'] if Current_context['style'] == 2 else 0
+                comment_response_data['message_phase'] = 0 # Current_context['phase'] if Current_context['style'] == 2 else 0
                 Current_context['comments'].append(comment_response_data) # only append the new comment sent by the bot
                 # 更新数据库
                 update_context_to_database()
@@ -334,7 +334,13 @@ def on_timeout_callback(timeout_info=None):
         # due to the append() after the bot sends a comment, the new_added_comments are not always the latest comments. We need to find the new_added_comments by comparing the ids.
         current_context_comments_ids = [comment['id'] for comment in Current_context['comments']]
         new_added_comments = [comment for comment in new_comments if comment['id'] not in current_context_comments_ids]
-        # ignore those send by the bot from frontend
+        # ignore those send by the bot from frontend, but still add them to the context['comments']
+        new_added_comments_sent_by_bot_from_frontend = [comment for comment in new_added_comments if comment['author_isbot'] == 'true']
+        # assign message_phase = 0 to all new_added_comments_sent_by_bot_from_frontend
+        for comment in new_added_comments_sent_by_bot_from_frontend:
+            comment['message_phase'] = 0
+        Current_context['comments'] = Current_context['comments'] + new_added_comments_sent_by_bot_from_frontend
+
         new_added_comments = [comment for comment in new_added_comments if comment['author_isbot'] == 'false']
         # assert len(new_added_comments) == len(new_comments) - len(Current_context['comments'])
 
@@ -405,7 +411,7 @@ def on_timeout_callback(timeout_info=None):
                 else:
                     print(f"Failed to post comment (new comment detected): {comment_response.status_code}")
                 # 更新上下文
-                comment_response_data['message_phase'] = Current_context['phase'] if Current_context['style'] == 2 else 0
+                comment_response_data['message_phase'] = 0 # Current_context['phase'] if Current_context['style'] == 2 else 0
                 Current_context['comments'].append(comment_response_data) # only append the new comment sent by the bot
                 # 更新数据库
                 update_context_to_database()

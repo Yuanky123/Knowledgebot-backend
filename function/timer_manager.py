@@ -36,14 +36,17 @@ class TimerManager:
         self.callback_func = callback_func
         print("计时器回调函数已设置")
     
-    def start_timer(self):
+    def start_timer(self, custom_timeout_seconds=None):
         """启动计时器"""
         if self.is_active:
             self.stop_timer()
         
         self.is_active = True
         self.last_activity_time = datetime.now()
-        self.timer = threading.Timer(self.timeout_seconds, self._on_timeout)
+        if custom_timeout_seconds is not None:
+            self.timer = threading.Timer(custom_timeout_seconds, self._on_timeout)
+        else:
+            self.timer = threading.Timer(self.timeout_seconds, self._on_timeout)
         self.timer.start()
         print(f"计时器已启动，{self.timeout_seconds}秒后超时")
     

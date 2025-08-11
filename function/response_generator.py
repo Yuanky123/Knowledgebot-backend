@@ -35,7 +35,7 @@ class ResponseGenerator:
 
         if current_phase == 1 or current_phase == 0:
 
-            phase_1_comments = [comment for comment in context['comments'] if comment.get('message_phase', 1) == 1]
+            phase_1_comments = [comment for comment in context['comments'] if comment.get('message_phase', 0) == 1]
             if len(phase_1_comments) == 0:
                 phase_1_comments_text = "(No comments yet)"
             else:
@@ -163,12 +163,20 @@ class ResponseGenerator:
             # get parent_comment_id from tid + argument/counterargument
             parent_comment_id = None
             argument_text = target_argument['text']
-            for comment in context['comments']:
-                if comment['body'] is None:
-                    continue
-                if argument_text in comment['body']:
-                    parent_comment_id = comment['id']
-                    break
+            if argument_text != "":
+                for comment in context['comments']:
+                    if comment['body'] is None or comment['author_isbot'] == 'true':
+                        continue
+                    if argument_text in comment['body']:
+                        parent_comment_id = comment['id']
+                        break
+            else:
+                parent_comment_id = None
+                return {
+                    'body': "IGNORE",
+                    'post_id': context['post']['id'],
+                    'parent_comment_id': parent_comment_id,
+                    } # actually this will not be posted
             
             if intervention_style == 0: # telling
                 intervention_message = strategy.format(

@@ -77,12 +77,14 @@ class CommentAnalyzer:
 
         # new_comments_phase = [1] * len(new_comments)
         # email ask for approval
-        for recipient in arg.EMAIL_RECIPIENTS:
-            send_custom_email(
-                recipient,
-                f"{len(new_comments)} Comments Need Phase Verification - [{arg.USERNAME}]",
-                body=f"Subreddit: {context['subreddit']}\nPost: {context['post']['title']}\n"
-            )
+        # if len(new_comments) == 0, don't send email
+        if len(new_comments) > 0:
+            for recipient in arg.EMAIL_RECIPIENTS:
+                send_custom_email(
+                    recipient,
+                    f"{len(new_comments)} Comments Need Phase Verification - [{arg.USERNAME}]",
+                    body=f"Subreddit: {context['subreddit']}\nPost: {context['post']['title']}\n"
+                )
         
         new_comments_phase = []
         for i in range(len(new_comments)):
@@ -165,13 +167,23 @@ class CommentAnalyzer:
             {comment.get('body', 'No content')}
             """
 
+            post_information = f'''
+                Post Title: {context['post']['title']}
+                Post Body: {context['post']['body'] if context['post']['body'] != '' else "(No content in post body)"}
+                '''
+
             prompt = f"""
+            You will be given a post, a list of candidate comments, and a new comment.
             Analyze which candidate comment the new comment is most likely replying to.
+
+            Post:
+            {post_information}
             
             New Comment (Author: {new_comment.get('author_name', 'Unknown')}):
             {build_parent_chain(new_comment, id_to_comment)}
             {new_comment.get('body', 'No content')}
             
+            Candidate comments:
             {candidate_text}
             
             Determine which candidate comment the new comment is most likely replying to. Consider:
@@ -217,7 +229,6 @@ class CommentAnalyzer:
                     {"role": "system", "content": "You are a helpful assistant that analyzes comment relationships. Always respond with valid JSON format."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=200,
                 temperature=0.1
             )
             
@@ -288,7 +299,6 @@ class CommentAnalyzer:
                     {"role": "system", "content": "You are a helpful assistant that analyzes comment relationships. Always respond with valid JSON format."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=200,
                 temperature=0.1
             )
             
@@ -325,7 +335,7 @@ class CommentAnalyzer:
 
         post_information = f'''
             Post Title: {context['post']['title']}
-            Post Body: {context['post']['body']}
+            Post Body: {context['post']['body'] if context['post']['body'] != '' else "(No content in post body)"}
             '''
 
         prompt = f"""
@@ -360,20 +370,46 @@ class CommentAnalyzer:
         {context_text}
         """
         print(f"[extract_argument_and_counterargument]🐞: Dicussion (context_text) = {context_text}")
-        response = client.chat.completions.create(
-            model=arg.OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that extracts arguments and counterarguments. Always respond with valid JSON format."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=400,
-            temperature=0.1
-        )
-        result_text = response.choices[0].message.content.strip()
+
+        result_text = ""
+        retry_count = -1
+        while len(result_text) < 10:
+
+            if retry_count != -1:
+                print(f"[GPT response too short, retrying...]")
+                print(f"[GPT response] = {result_text}")
+                print(f"[GPT prompt] = {prompt}")
+            response = client.chat.completions.create(
+                model=arg.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that extracts arguments and counterarguments. Always respond with valid JSON format."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1
+            )
+            result_text = response.choices[0].message.content.strip()
+            retry_count += 1
+
+            if retry_count > 3:
+                model = "gpt-4o"
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that extracts arguments and counterarguments. Always respond with valid JSON format."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.1
+                )
+                result_text = response.choices[0].message.content.strip()
+                print(f"[GPT 4o response] = {result_text}")
+
+
         try:
             result_json = json.loads(extract_json_from_markdown(result_text))
         except Exception as e:
             print(f"Error parsing GPT response for argument/counterargument extraction: {e}")
+            print(f"[extract_argument_and_counterargument]🐞: GPT response = {result_text}")
+            print(f"[extract_argument_and_counterargument]🐞: prompt = {prompt}")
             result_json = {
                 "argument": {"text": "", "explanation": "No argument found."},
                 "counterargument": {"text": "", "explanation": "No counterargument found."}
@@ -388,8 +424,13 @@ class CommentAnalyzer:
         """
         context_text = formulate_tree(context, tree_id)
 
+        post_information = f'''
+            Post Title: {context['post']['title']}
+            Post Body: {context['post']['body'] if context['post']['body'] != '' else "(No content in post body)"}
+            '''
+
         prompt = f"""
-        You are an expert discussion analyst. Given the following discussion, the extracted main argument and counterargument. For the counterargument, assess the following three dimensions:
+        You are an expert discussion analyst. Given the following post, the extracted main argument and counterargument, and related discussion. For the counterargument, assess the following three dimensions:
         - Evidence: Factual information, data, examples, or references that support the counterargument. Reply to other's comments is NOT evidence.
         - Reasoning: Logical connections, explanations, or justifications that link evidence to the counterargument or show how conclusions are drawn.
         - Qualifier: Words or phrases that indicate the strength, scope, or certainty of the counterargument (e.g., "usually", "sometimes", "might", "in most cases").
@@ -400,14 +441,17 @@ class CommentAnalyzer:
 
         For each dimension, provide a score of 0 or 1 (0 = not present, 1 = present), and a brief explanation for your score. 
         
-        Discussion:
-        {context_text}
+        Post:
+        {post_information}
 
         The extracted argument and counterargument are:
         Argument:
         {argument}
         Counterargument:
         {counterargument}
+
+        Discussion:
+        {context_text}
 
         Respond in the following JSON format:
         {{
@@ -422,7 +466,6 @@ class CommentAnalyzer:
                 {"role": "system", "content": "You are a helpful assistant that analyzes counterarguments. Always respond with valid JSON format."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=400,
             temperature=0.1
         )
         result_text = response.choices[0].message.content.strip()
@@ -445,8 +488,13 @@ class CommentAnalyzer:
         # Get all comments in the tree
         context_text = formulate_tree(context, tree_id)
 
+        post_information = f'''
+            Post Title: {context['post']['title']}
+            Post Body: {context['post']['body'] if context['post']['body'] != '' else "(No content in post body)"}
+            '''
+
         prompt = f"""
-        You are an expert discussion analyst. Given the following discussion and the main claim or argument, assess whether the discussion contains the following 3 dimensions. For each dimension, provide a score of 0 or 1 (0 = not present, 1 = present), and a brief explanation for your score.
+        You are an expert discussion analyst. Given, for a specific post, the main claim or argument and the following discussion, assess whether the discussion contains the following 3 dimensions. For each dimension, provide a score of 0 or 1 (0 = not present, 1 = present), and a brief explanation for your score.
 
         Definitions:
         - Evidence: Factual information, data, examples, or references that support the main claim or argument in the discussion. Reply to other's comments is NOT evidence.
@@ -457,12 +505,17 @@ class CommentAnalyzer:
         - The reasoning could be: "A man born in Bermuda will legally be a British citizen".
         - The qualifier could be: "I am a British citizen, presumably" (This has a lower degree of force than "I am definitely a British citizen").
 
+        Post:
+        {post_information}
+
+        The extracted main argument is:
+        {argument}
+
         Discussion:
         {context_text}
 
-        The extracted main argument is:
-        Main Argument:
-        {argument}
+        Note:
+        - If the discussion is just the same as the main argument, then this means that there are only arguments but no supporting evidence, reasoning, or qualifier. Thus, the score of evidence, reasoning, and qualifier should all be 0.
 
         Respond in the following JSON format:
         {{
@@ -471,16 +524,38 @@ class CommentAnalyzer:
             "qualifier": {{"score": <0-1>, "explanation": "..."}},
         }}
         """
-        response = client.chat.completions.create(
-            model=arg.OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that analyzes discussion quality. Always respond with valid JSON format."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=400,
-            temperature=0.1
-        )
-        result_text = response.choices[0].message.content.strip()
+
+        result_text = ""
+        retry_count = -1
+        while len(result_text) < 10:
+
+            if retry_count != -1:
+                print(f"[GPT response too short, retrying...]")
+                print(f"[GPT response] = {result_text}")
+            response = client.chat.completions.create(
+                model=arg.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that analyzes discussion quality. Always respond with valid JSON format."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1
+            )
+            result_text = response.choices[0].message.content.strip()
+            retry_count += 1
+
+            if retry_count > 3:
+                model = "gpt-4o"
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that analyzes discussion quality. Always respond with valid JSON format."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.1
+                )
+                result_text = response.choices[0].message.content.strip()
+                print(f"[GPT 4o response] = {result_text}")
+
         try:
             result_json = json.loads(extract_json_from_markdown(result_text))
         except Exception as e:
@@ -606,16 +681,37 @@ class CommentAnalyzer:
             - If a comment is related to the inter-tree conflict, no "assigned_conflict_id" should be provided.
         """
 
-        response = client.chat.completions.create(
-            model=arg.OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
-                {"role": "user", "content": Prompt}
-            ],
-            max_tokens=400,
-            temperature=0.1
-        )
-        result_text = response.choices[0].message.content.strip()
+        result_text = ""
+        retry_count = -1
+        while len(result_text) < 10:
+            if retry_count != -1:
+                print(f"[GPT response too short, retrying...]")
+                print(f"[GPT response] = {result_text}")
+                print(f"[GPT prompt] = {Prompt}")
+            response = client.chat.completions.create(
+                model=arg.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
+                    {"role": "user", "content": Prompt}
+                ],
+                temperature=0.1
+            )
+            result_text = response.choices[0].message.content.strip()
+            retry_count += 1
+
+            if retry_count > 3:
+                model = "gpt-4o"
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
+                        {"role": "user", "content": Prompt}
+                    ],
+                    temperature=0.1
+                )
+                result_text = response.choices[0].message.content.strip()
+                print(f"[GPT 4o response] = {result_text}")
+
         try:
             result_json = json.loads(extract_json_from_markdown(result_text))
             print(f"[map_phase3_comments_to_conflicts]🐞: result_json = ")
@@ -691,17 +787,36 @@ class CommentAnalyzer:
         }}
         """
 
-        response = client.chat.completions.create(
-            model=arg.OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
-                {"role": "user", "content": Prompt}
-            ],
-            max_tokens=400,
-            temperature=0.1
-        )
+        result_text = ""
+        retry_count = -1
+        while len(result_text) < 10:
+            if retry_count != -1:
+                print(f"[GPT response too short, retrying...]")
+                print(f"[GPT response] = {result_text}")
+            response = client.chat.completions.create(
+                model=arg.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
+                    {"role": "user", "content": Prompt}
+                ],
+                temperature=0.1
+            )
+            result_text = response.choices[0].message.content.strip()
+            retry_count += 1
 
-        result_text = response.choices[0].message.content.strip()
+            if retry_count > 3:
+                model = "gpt-4o"
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
+                        {"role": "user", "content": Prompt}
+                    ],
+                    temperature=0.1
+                )
+                result_text = response.choices[0].message.content.strip()
+                print(f"[GPT 4o response] = {result_text}")
+
         try:
             result_json = json.loads(extract_json_from_markdown(result_text))
         except Exception as e:
@@ -765,17 +880,37 @@ class CommentAnalyzer:
                 }}
                 """
 
-                response = client.chat.completions.create(
-                    model=arg.OPENAI_MODEL,
-                    messages=[
-                        {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
-                        {"role": "user", "content": Prompt}
-                    ],
-                    max_tokens=400,
-                    temperature=0.1
-                )
+                result_text = ""
+                retry_count = -1
+                while len(result_text) < 10:
+                    if retry_count != -1:
+                        print(f"[GPT response too short, retrying...]")
+                        print(f"[GPT response] = {result_text}")
+                    response = client.chat.completions.create(
+                        model=arg.OPENAI_MODEL,
+                        messages=[
+                            {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
+                            {"role": "user", "content": Prompt}
+                        ],
+                        temperature=0.1
+                    )
 
-                result_text = response.choices[0].message.content.strip()
+                    result_text = response.choices[0].message.content.strip()
+                    retry_count += 1
+
+                    if retry_count > 3:
+                        model = "gpt-4o"
+                        response = client.chat.completions.create(
+                            model=model,
+                            messages=[
+                                {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
+                                {"role": "user", "content": Prompt}
+                            ],
+                            temperature=0.1
+                        )
+                        result_text = response.choices[0].message.content.strip()
+                        print(f"[GPT 4o response] = {result_text}")
+
                 try:
                     result_json = json.loads(extract_json_from_markdown(result_text))
                 except Exception as e:
@@ -840,17 +975,36 @@ class CommentAnalyzer:
         }}
         """
 
-        response = client.chat.completions.create(
-            model=arg.OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
-                {"role": "user", "content": Prompt}
-            ],
-            max_tokens=400,
-            temperature=0.1
-        )
+        result_text = ""
+        retry_count = -1
+        while len(result_text) < 10:
+            if retry_count != -1:
+                print(f"[GPT response too short, retrying...]")
+                print(f"[GPT response] = {result_text}")
+                print(f"[GPT prompt] = {Prompt}")
+            response = client.chat.completions.create(
+                model=arg.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
+                    {"role": "user", "content": Prompt}
+                ],
+                temperature=0.1
+            )
 
-        result_text = response.choices[0].message.content.strip()
+            result_text = response.choices[0].message.content.strip()
+            retry_count += 1
+
+            if retry_count > 3:
+                model = "gpt-4o"
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
+                        {"role": "user", "content": Prompt}
+                    ],
+                    temperature=0.1
+                )
+                result_text = response.choices[0].message.content.strip()
         try:
             result_json = json.loads(extract_json_from_markdown(result_text))
         except Exception as e:
@@ -893,17 +1047,38 @@ class CommentAnalyzer:
         ]
         """
 
-        response = client.chat.completions.create(
-            model=arg.OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
-                {"role": "user", "content": Prompt}
-            ],
-            max_tokens=400,
-            temperature=0.1
-        )
+        result_text = ""
+        retry_count = -1
+        while len(result_text) < 10:
+            if retry_count != -1:
+                print(f"[GPT response too short, retrying...]")
+                print(f"[GPT response] = {result_text}")    
+                print(f"[GPT prompt] = {Prompt}")
+            response = client.chat.completions.create(
+                model=arg.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
+                    {"role": "user", "content": Prompt}
+                ],
+                temperature=0.1
+            )
 
-        result_text = response.choices[0].message.content.strip()
+            result_text = response.choices[0].message.content.strip()
+            retry_count += 1
+
+            if retry_count > 3:
+                model = "gpt-4o"
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
+                        {"role": "user", "content": Prompt}
+                    ],
+                    temperature=0.1
+                )
+                result_text = response.choices[0].message.content.strip()
+                print(f"[GPT 4o response] = {result_text}")
+
         try:
             result_json = json.loads(extract_json_from_markdown(result_text))
         except Exception as e:
@@ -958,17 +1133,38 @@ class CommentAnalyzer:
         }}
         """
 
-        response = client.chat.completions.create(
-            model=arg.OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that generates consensus for a conflict. Always respond with valid JSON format."},
-                {"role": "user", "content": Prompt}
-            ],
-            max_tokens=800,
-            temperature=0.1
-        )
+        result_text = ""
+        retry_count = -1
+        while len(result_text) < 10:
+            if retry_count != -1:
+                print(f"[GPT response too short, retrying...]")
+                print(f"[GPT response] = {result_text}")
+                print(f"[GPT prompt] = {Prompt}")
+            response = client.chat.completions.create(
+                model=arg.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that generates consensus for a conflict. Always respond with valid JSON format."},
+                    {"role": "user", "content": Prompt}
+                ],
+                temperature=0.1
+            )
 
-        result_text = response.choices[0].message.content.strip()
+            result_text = response.choices[0].message.content.strip()
+            retry_count += 1
+
+            if retry_count > 3:
+                model = "gpt-4o"
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[  
+                        {"role": "system", "content": "You are a helpful assistant that generates consensus for a conflict. Always respond with valid JSON format."},
+                        {"role": "user", "content": Prompt}
+                    ],
+                    temperature=0.1
+                )
+                result_text = response.choices[0].message.content.strip()
+                print(f"[GPT 4o response] = {result_text}")
+
         try:
             result_json = json.loads(extract_json_from_markdown(result_text))
         except Exception as e:
@@ -1046,16 +1242,37 @@ class CommentAnalyzer:
             }}
         }}
         """
-        response = client.chat.completions.create(
-            model=arg.OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that determines if the comments cover the consensus. Always respond with valid JSON format."},
-                {"role": "user", "content": Prompt}
-            ],
-            max_tokens=400,
-            temperature=0.1
-        )
-        result_text = response.choices[0].message.content.strip()
+        result_text = ""
+        retry_count = -1
+        while len(result_text) < 10:
+            if retry_count != -1:
+                print(f"[GPT response too short, retrying...]")
+                print(f"[GPT response] = {result_text}")
+                print(f"[GPT prompt] = {Prompt}")
+            response = client.chat.completions.create(
+                model=arg.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that determines if the comments cover the consensus. Always respond with valid JSON format."},
+                    {"role": "user", "content": Prompt}
+                ],
+                temperature=0.1
+            )
+            result_text = response.choices[0].message.content.strip()
+            retry_count += 1
+
+            if retry_count > 3:
+                model = "gpt-4o"
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that determines if the comments cover the consensus. Always respond with valid JSON format."},
+                        {"role": "user", "content": Prompt}
+                    ],
+                    temperature=0.1
+                )
+                result_text = response.choices[0].message.content.strip()
+                print(f"[GPT 4o response] = {result_text}")
+
         try:
             result_json = json.loads(extract_json_from_markdown(result_text))
         except Exception as e:
@@ -1112,7 +1329,6 @@ class CommentAnalyzer:
                 {"role": "system", "content": "You are a helpful assistant that extracts reflection comments from a discussion."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=800,
             temperature=0.1
         )
         result_text = response.choices[0].message.content.strip()
