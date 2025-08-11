@@ -11,22 +11,27 @@ import json
 import traceback
 from .utils import build_parent_chain, extract_json_from_markdown, extract_mentioned_user, formulate_tree, list_tree_ids
 from pprint import pprint
+import copy
+
+import sys
+sys.path.append('../')
+from email_utils import send_custom_email
 
 # Configure OpenAI client
 client = OpenAI(
-    base_url='https://api.openai-proxy.org/v1',
+    base_url='https://api.zhizengzeng.com/v1',
     api_key=arg.OPENAI_API_KEY
     )
 
 local_client = OpenAI(
-    base_url="http://0.0.0.0:8000/v1", # TODO: change the base_url
+    base_url="http://0.0.0.0:8000/v1",
     api_key="0"
 )
 
-client_gemini = OpenAI(
-    base_url='https://api.zhizengzeng.com/v1',
-    api_key="sk-zk23e12430a30075ee3d9858364a99d800867112483439ff"
-)
+# client_gemini = OpenAI(
+#     base_url='https://api.zhizengzeng.com/v1',
+#     api_key="sk-zk23e12430a30075ee3d9858364a99d800867112483439ff"
+# )
 
 class CommentAnalyzer:
     """评论分析器"""
@@ -49,14 +54,14 @@ class CommentAnalyzer:
                 'description': '深入探讨，展开多维度分析'
             },
             'negotiation': {
-                'min_coverage_rate': 0.5,
+                'min_coverage_rate': 0.5, # TODO: Unused variable!!
                 'description': '处理分歧，寻求共识'
             },
             'co_construction': {
                 'min_comments': 3, # TODO: Unused variable!!
                 'description': '共同构建知识，整合观点'
             },
-            'co_constrction_subphase_2': {
+            'co_construction_subphase_2': {
                 'min_comments': 3,
                 'description': '反思及应用'
             }
@@ -71,6 +76,15 @@ class CommentAnalyzer:
         # 输出：当前评论的阶段(list)，并返回给前端
 
         # new_comments_phase = [1] * len(new_comments)
+        # email ask for approval
+        # if len(new_comments) == 0, don't send email
+        if len(new_comments) > 0:
+            for recipient in arg.EMAIL_RECIPIENTS:
+                send_custom_email(
+                    recipient,
+                    f"{len(new_comments)} Comments Need Phase Verification - [{arg.USERNAME}]",
+                    body=f"Subreddit: {context['subreddit']}\nPost: {context['post']['title']}\n"
+                )
         
         new_comments_phase = []
         for i in range(len(new_comments)):
@@ -87,7 +101,7 @@ class CommentAnalyzer:
                     messages=messages,
                     model="mistralai/Mistral-7B-Instruct-v0.3"
                 )
-                print(f"Comment Classifier Response: {response.choices[0].message.content}")
+                print(f"Comment Classifier Response by Mistral-7B-Instruct-v0.3: {response.choices[0].message.content}")
                 try:
                     model_prediction_phase = int(response.choices[0].message.content)
                 except:
@@ -113,8 +127,21 @@ class CommentAnalyzer:
                                 break
                     if parent_comment_phase is None:
                         parent_comment_phase = 0
+                    if parent_comment_phase == 1:
+                        parent_comment_phase = 2 # comments replying to phase 1 should be at least phase 2; 
+                        # but for other phases, comments replying to phase x should be at least phase x
                     final_prediction_phase = max(model_prediction_phase, parent_comment_phase) # fix bug: min -> max
                 
+            # require input or approval
+            input_phase = None
+            while input_phase not in [0,1,2,3,4]:
+                input_phase = input(f"Comment: {new_comments[i]['body']}\nClassified as phase {final_prediction_phase}\nPlease input the final prediction phase for comment {new_comments[i]['id']}: ")
+                if input_phase in ['0', '1', '2', '3', '4']:
+                    input_phase = int(input_phase)
+                else:
+                    print(f"Invalid input, please input 0, 1, 2, 3, or 4")
+            final_prediction_phase = int(input_phase)
+
             new_comments[i]['message_phase'] = final_prediction_phase
             new_comments_phase.append(final_prediction_phase)
 
@@ -140,13 +167,23 @@ class CommentAnalyzer:
             {comment.get('body', 'No content')}
             """
 
+            post_information = f'''
+                Post Title: {context['post']['title']}
+                Post Body: {context['post']['body'] if context['post']['body'] != '' else "(No content in post body)"}
+                '''
+
             prompt = f"""
+            You will be given a post, a list of candidate comments, and a new comment.
             Analyze which candidate comment the new comment is most likely replying to.
+
+            Post:
+            {post_information}
             
             New Comment (Author: {new_comment.get('author_name', 'Unknown')}):
             {build_parent_chain(new_comment, id_to_comment)}
             {new_comment.get('body', 'No content')}
             
+            Candidate comments:
             {candidate_text}
             
             Determine which candidate comment the new comment is most likely replying to. Consider:
@@ -192,7 +229,6 @@ class CommentAnalyzer:
                     {"role": "system", "content": "You are a helpful assistant that analyzes comment relationships. Always respond with valid JSON format."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=200,
                 temperature=0.1
             )
             
@@ -263,7 +299,6 @@ class CommentAnalyzer:
                     {"role": "system", "content": "You are a helpful assistant that analyzes comment relationships. Always respond with valid JSON format."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=200,
                 temperature=0.1
             )
             
@@ -295,11 +330,22 @@ class CommentAnalyzer:
         """
         context_text = formulate_tree(context, tree_id)
 
+        print(f"[extract_argument_and_counterargument]🐞: context_text = ")
+        print(context_text)
+
+        post_information = f'''
+            Post Title: {context['post']['title']}
+            Post Body: {context['post']['body'] if context['post']['body'] != '' else "(No content in post body)"}
+            '''
+
         prompt = f"""
-        You are an expert discussion analyst. Given the following discussion, identify:
+        You are an expert discussion analyst. Given the following post and related discussion, identify:
         1. The main argument (the central claim or position that most comments support or build upon).
         2. The main counterargument (the most significant statement that challenges, refutes, or provides an alternative perspective to the main argument).
         If there are multiple counterarguments, focus on the most representative one.
+
+        Note:
+        - Among the comments, there might be some comments asking for evidence, reasoning, or qualifier for a specific argument. These comments do not count as counterarguments.
 
         For each, provide the extracted text and a brief explanation of why you selected it.
         Respond in the following JSON format:
@@ -317,24 +363,53 @@ class CommentAnalyzer:
         Note that:
         - Providing alternative perspectives is not viewed as a counterargument. We only consider counterarguments that explicitly refute the argument.
 
+        Post:
+        {post_information}
+
         Discussion:
         {context_text}
         """
         print(f"[extract_argument_and_counterargument]🐞: Dicussion (context_text) = {context_text}")
-        response = client.chat.completions.create(
-            model=arg.OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that extracts arguments and counterarguments. Always respond with valid JSON format."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=400,
-            temperature=0.1
-        )
-        result_text = response.choices[0].message.content.strip()
+
+        result_text = ""
+        retry_count = -1
+        while len(result_text) < 10:
+
+            if retry_count != -1:
+                print(f"[GPT response too short, retrying...]")
+                print(f"[GPT response] = {result_text}")
+                print(f"[GPT prompt] = {prompt}")
+            response = client.chat.completions.create(
+                model=arg.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that extracts arguments and counterarguments. Always respond with valid JSON format."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1
+            )
+            result_text = response.choices[0].message.content.strip()
+            retry_count += 1
+
+            if retry_count > 3:
+                model = "gpt-4o"
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that extracts arguments and counterarguments. Always respond with valid JSON format."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.1
+                )
+                result_text = response.choices[0].message.content.strip()
+                print(f"[GPT 4o response] = {result_text}")
+
+
         try:
             result_json = json.loads(extract_json_from_markdown(result_text))
         except Exception as e:
             print(f"Error parsing GPT response for argument/counterargument extraction: {e}")
+            print(f"[extract_argument_and_counterargument]🐞: GPT response = {result_text}")
+            print(f"[extract_argument_and_counterargument]🐞: prompt = {prompt}")
             result_json = {
                 "argument": {"text": "", "explanation": "No argument found."},
                 "counterargument": {"text": "", "explanation": "No counterargument found."}
@@ -349,21 +424,34 @@ class CommentAnalyzer:
         """
         context_text = formulate_tree(context, tree_id)
 
+        post_information = f'''
+            Post Title: {context['post']['title']}
+            Post Body: {context['post']['body'] if context['post']['body'] != '' else "(No content in post body)"}
+            '''
+
         prompt = f"""
-        You are an expert discussion analyst. Given the following discussion, the extracted main argument and counterargument. For the counterargument, assess the following three dimensions:
+        You are an expert discussion analyst. Given the following post, the extracted main argument and counterargument, and related discussion. For the counterargument, assess the following three dimensions:
         - Evidence: Factual information, data, examples, or references that support the counterargument. Reply to other's comments is NOT evidence.
         - Reasoning: Logical connections, explanations, or justifications that link evidence to the counterargument or show how conclusions are drawn.
         - Qualifier: Words or phrases that indicate the strength, scope, or certainty of the counterargument (e.g., "usually", "sometimes", "might", "in most cases").
+        For example, for the argument or claim "I am a British citizen" made by a person:
+        - The evidence could be: "I was born in Bermuda".
+        - The reasoning could be: "A man born in Bermuda will legally be a British citizen".
+        - The qualifier could be: "I am a British citizen, presumably" (This has a lower degree of force than "I am definitely a British citizen").
+
         For each dimension, provide a score of 0 or 1 (0 = not present, 1 = present), and a brief explanation for your score. 
         
-        Discussion:
-        {context_text}
+        Post:
+        {post_information}
 
         The extracted argument and counterargument are:
         Argument:
         {argument}
         Counterargument:
         {counterargument}
+
+        Discussion:
+        {context_text}
 
         Respond in the following JSON format:
         {{
@@ -378,7 +466,6 @@ class CommentAnalyzer:
                 {"role": "system", "content": "You are a helpful assistant that analyzes counterarguments. Always respond with valid JSON format."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=400,
             temperature=0.1
         )
         result_text = response.choices[0].message.content.strip()
@@ -401,20 +488,34 @@ class CommentAnalyzer:
         # Get all comments in the tree
         context_text = formulate_tree(context, tree_id)
 
+        post_information = f'''
+            Post Title: {context['post']['title']}
+            Post Body: {context['post']['body'] if context['post']['body'] != '' else "(No content in post body)"}
+            '''
+
         prompt = f"""
-        You are an expert discussion analyst. Given the following discussion and the main claim or argument, assess whether the discussion contains the following 3 dimensions. For each dimension, provide a score of 0 or 1 (0 = not present, 1 = present), and a brief explanation for your score.
+        You are an expert discussion analyst. Given, for a specific post, the main claim or argument and the following discussion, assess whether the discussion contains the following 3 dimensions. For each dimension, provide a score of 0 or 1 (0 = not present, 1 = present), and a brief explanation for your score.
 
         Definitions:
         - Evidence: Factual information, data, examples, or references that support the main claim or argument in the discussion. Reply to other's comments is NOT evidence.
         - Reasoning: Logical connections, explanations, or justifications that link evidence to the main claim or argument, or show how conclusions of the main claim or argument are drawn.
         - Qualifier: Words or phrases that indicate the strength, scope, or certainty of the main claim or argument (e.g., "usually", "sometimes", "might", "in most cases").
+        For example, for the argument or claim "I am a British citizen" made by a person:
+        - The evidence could be: "I was born in Bermuda".
+        - The reasoning could be: "A man born in Bermuda will legally be a British citizen".
+        - The qualifier could be: "I am a British citizen, presumably" (This has a lower degree of force than "I am definitely a British citizen").
+
+        Post:
+        {post_information}
+
+        The extracted main argument is:
+        {argument}
 
         Discussion:
         {context_text}
 
-        The extracted main argument is:
-        Main Argument:
-        {argument}
+        Note:
+        - If the discussion is just the same as the main argument, then this means that there are only arguments but no supporting evidence, reasoning, or qualifier. Thus, the score of evidence, reasoning, and qualifier should all be 0.
 
         Respond in the following JSON format:
         {{
@@ -423,16 +524,38 @@ class CommentAnalyzer:
             "qualifier": {{"score": <0-1>, "explanation": "..."}},
         }}
         """
-        response = client.chat.completions.create(
-            model=arg.OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that analyzes discussion quality. Always respond with valid JSON format."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=400,
-            temperature=0.1
-        )
-        result_text = response.choices[0].message.content.strip()
+
+        result_text = ""
+        retry_count = -1
+        while len(result_text) < 10:
+
+            if retry_count != -1:
+                print(f"[GPT response too short, retrying...]")
+                print(f"[GPT response] = {result_text}")
+            response = client.chat.completions.create(
+                model=arg.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that analyzes discussion quality. Always respond with valid JSON format."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1
+            )
+            result_text = response.choices[0].message.content.strip()
+            retry_count += 1
+
+            if retry_count > 3:
+                model = "gpt-4o"
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that analyzes discussion quality. Always respond with valid JSON format."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.1
+                )
+                result_text = response.choices[0].message.content.strip()
+                print(f"[GPT 4o response] = {result_text}")
+
         try:
             result_json = json.loads(extract_json_from_markdown(result_text))
         except Exception as e:
@@ -480,11 +603,11 @@ class CommentAnalyzer:
                 'id': c['id'],
                 'body': c['body'],
                 'author_name': c['author_name']
-            } for c in context.get('comments', [])+context.get('new_added_comment', []) if c.get('message_phase', 0) == phase]
+            } for c in context.get('comments', [])+context.get('new_added_comment', []) if c.get('message_phase', 0) == phase and c.get('author_isbot', 'false') == 'false']
 
     def map_phase3_comments_to_conflicts(self, phase3_comments, intra_tree_conflicts, inter_tree_conflicts):
         print(f"🟢: In function [map_phase3_comments_to_conflicts]")
-        # TODO: Implement this function: compare each phase 3 comment against all tree comments. 
+        # Implement this function: compare each phase 3 comment against all tree comments. 
         # Params: phase3_comments: all phase 3 comments
         # intra_tree_conflicts: all intra tree conflicts. { 1: {'argument': '...', 'counterargument': '...' }, 2: {'argument': '...', 'counterargument': '...' }, ... }
         # inter_tree_conflicts: all dimensions of inter tree conflicts. { 'dimensions': { 1: {'argument': '...' ] }, 2: {'argument': '...' }, ... }, 'comments': [ {comment_1}, {comment_2}, ... ] }
@@ -558,16 +681,37 @@ class CommentAnalyzer:
             - If a comment is related to the inter-tree conflict, no "assigned_conflict_id" should be provided.
         """
 
-        response = client_gemini.chat.completions.create( # TODO: change back to client (gpt-4o-mini), or change all clients to google gemini
-            model="gemini-2.0-flash",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
-                {"role": "user", "content": Prompt}
-            ],
-            max_tokens=400,
-            temperature=0.1
-        )
-        result_text = response.choices[0].message.content.strip()
+        result_text = ""
+        retry_count = -1
+        while len(result_text) < 10:
+            if retry_count != -1:
+                print(f"[GPT response too short, retrying...]")
+                print(f"[GPT response] = {result_text}")
+                print(f"[GPT prompt] = {Prompt}")
+            response = client.chat.completions.create(
+                model=arg.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
+                    {"role": "user", "content": Prompt}
+                ],
+                temperature=0.1
+            )
+            result_text = response.choices[0].message.content.strip()
+            retry_count += 1
+
+            if retry_count > 3:
+                model = "gpt-4o"
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
+                        {"role": "user", "content": Prompt}
+                    ],
+                    temperature=0.1
+                )
+                result_text = response.choices[0].message.content.strip()
+                print(f"[GPT 4o response] = {result_text}")
+
         try:
             result_json = json.loads(extract_json_from_markdown(result_text))
             print(f"[map_phase3_comments_to_conflicts]🐞: result_json = ")
@@ -610,7 +754,7 @@ class CommentAnalyzer:
         return return_result
 
     def map_phase3_comments_to_inter_conflict_dimensions(self, inter_tree_conflicts):
-        # TODO: Implement this function: compare each phase 3 comment against all inter tree dimensions. 
+        # Implement this function: compare each phase 3 comment against all inter tree dimensions. 
         # Params: inter_tree_conflicts: all dimensions of inter tree conflicts. { 'dimensions': { 1: {'argument': '...' ] }, 2: {'argument': '...' }, ... }, 'comments': [ {comment_1}, {comment_2}, ... ] }
         # For each dimension of the conflict let GPT give a score of whether the comment is related to it or not (0 or 1) with a reason.
         # I suggest only query GPT once and let GPT rate all connections since it might hallucinate and give all 1 scores if you compare with only one dimension each time.
@@ -643,17 +787,36 @@ class CommentAnalyzer:
         }}
         """
 
-        response = client.chat.completions.create(
-            model=arg.OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
-                {"role": "user", "content": Prompt}
-            ],
-            max_tokens=400,
-            temperature=0.1
-        )
+        result_text = ""
+        retry_count = -1
+        while len(result_text) < 10:
+            if retry_count != -1:
+                print(f"[GPT response too short, retrying...]")
+                print(f"[GPT response] = {result_text}")
+            response = client.chat.completions.create(
+                model=arg.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
+                    {"role": "user", "content": Prompt}
+                ],
+                temperature=0.1
+            )
+            result_text = response.choices[0].message.content.strip()
+            retry_count += 1
 
-        result_text = response.choices[0].message.content.strip()
+            if retry_count > 3:
+                model = "gpt-4o"
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
+                        {"role": "user", "content": Prompt}
+                    ],
+                    temperature=0.1
+                )
+                result_text = response.choices[0].message.content.strip()
+                print(f"[GPT 4o response] = {result_text}")
+
         try:
             result_json = json.loads(extract_json_from_markdown(result_text))
         except Exception as e:
@@ -717,17 +880,37 @@ class CommentAnalyzer:
                 }}
                 """
 
-                response = client.chat.completions.create(
-                    model=arg.OPENAI_MODEL,
-                    messages=[
-                        {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
-                        {"role": "user", "content": Prompt}
-                    ],
-                    max_tokens=400,
-                    temperature=0.1
-                )
+                result_text = ""
+                retry_count = -1
+                while len(result_text) < 10:
+                    if retry_count != -1:
+                        print(f"[GPT response too short, retrying...]")
+                        print(f"[GPT response] = {result_text}")
+                    response = client.chat.completions.create(
+                        model=arg.OPENAI_MODEL,
+                        messages=[
+                            {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
+                            {"role": "user", "content": Prompt}
+                        ],
+                        temperature=0.1
+                    )
 
-                result_text = response.choices[0].message.content.strip()
+                    result_text = response.choices[0].message.content.strip()
+                    retry_count += 1
+
+                    if retry_count > 3:
+                        model = "gpt-4o"
+                        response = client.chat.completions.create(
+                            model=model,
+                            messages=[
+                                {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
+                                {"role": "user", "content": Prompt}
+                            ],
+                            temperature=0.1
+                        )
+                        result_text = response.choices[0].message.content.strip()
+                        print(f"[GPT 4o response] = {result_text}")
+
                 try:
                     result_json = json.loads(extract_json_from_markdown(result_text))
                 except Exception as e:
@@ -792,17 +975,36 @@ class CommentAnalyzer:
         }}
         """
 
-        response = client.chat.completions.create(
-            model=arg.OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
-                {"role": "user", "content": Prompt}
-            ],
-            max_tokens=400,
-            temperature=0.1
-        )
+        result_text = ""
+        retry_count = -1
+        while len(result_text) < 10:
+            if retry_count != -1:
+                print(f"[GPT response too short, retrying...]")
+                print(f"[GPT response] = {result_text}")
+                print(f"[GPT prompt] = {Prompt}")
+            response = client.chat.completions.create(
+                model=arg.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
+                    {"role": "user", "content": Prompt}
+                ],
+                temperature=0.1
+            )
 
-        result_text = response.choices[0].message.content.strip()
+            result_text = response.choices[0].message.content.strip()
+            retry_count += 1
+
+            if retry_count > 3:
+                model = "gpt-4o"
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
+                        {"role": "user", "content": Prompt}
+                    ],
+                    temperature=0.1
+                )
+                result_text = response.choices[0].message.content.strip()
         try:
             result_json = json.loads(extract_json_from_markdown(result_text))
         except Exception as e:
@@ -817,7 +1019,7 @@ class CommentAnalyzer:
     def determine_coverage_of_inter_conflicts(self, inter_tree_conflicts):
         print(f"🟢: In function [determine_coverage_of_inter_conflicts], inter_tree_conflicts = ")
         pprint(inter_tree_conflicts)
-        # TODO: Implemenet this function: get all phase 3 comments related to this conflict and for each dimension determine whether the phase 3 comments cover it.
+        # Implemenet this function: get all phase 3 comments related to this conflict and for each dimension determine whether the phase 3 comments cover it.
         # Params: inter_tree_conflicts: all inter tree conflicts. { 'dimensions': { 1: {'argument': '...', 'comments': [ {comment_1}, {comment_2}, ... ] } , 2: {'argument': '...', 'comments': [ {comment_1}, {comment_2}, ... ] } , ... }, 'comments': [ {comment_1}, {comment_2}, ... ] }
         # Score from 0 to 1 (0 = not covered, 1 = covered) and let GPT give a reason for the scoring.
         # Return { 1: { 'score': 0, 'reason': '...' } , 2: { 'score': 1, 'reason': '...' } , ... }
@@ -845,17 +1047,38 @@ class CommentAnalyzer:
         ]
         """
 
-        response = client_gemini.chat.completions.create( # TODO: change to client
-            model="gemini-2.0-flash",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
-                {"role": "user", "content": Prompt}
-            ],
-            max_tokens=400,
-            temperature=0.1
-        )
+        result_text = ""
+        retry_count = -1
+        while len(result_text) < 10:
+            if retry_count != -1:
+                print(f"[GPT response too short, retrying...]")
+                print(f"[GPT response] = {result_text}")    
+                print(f"[GPT prompt] = {Prompt}")
+            response = client.chat.completions.create(
+                model=arg.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
+                    {"role": "user", "content": Prompt}
+                ],
+                temperature=0.1
+            )
 
-        result_text = response.choices[0].message.content.strip()
+            result_text = response.choices[0].message.content.strip()
+            retry_count += 1
+
+            if retry_count > 3:
+                model = "gpt-4o"
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that analyzes comments in a discussion to determine which conflicts they relate to. Always respond with valid JSON format."},
+                        {"role": "user", "content": Prompt}
+                    ],
+                    temperature=0.1
+                )
+                result_text = response.choices[0].message.content.strip()
+                print(f"[GPT 4o response] = {result_text}")
+
         try:
             result_json = json.loads(extract_json_from_markdown(result_text))
         except Exception as e:
@@ -869,11 +1092,16 @@ class CommentAnalyzer:
         return return_result
 
     def consensus_generate(self, intra_tree_conflicts, inter_tree_conflicts):
-        # TODO: Implement this function: generate consensus for each conflict.
+        print(f"🟢: In function [consensus_generate], intra_tree_conflicts = ")
+        pprint(intra_tree_conflicts)
+        print(f"inter_tree_conflicts = ")
+        pprint(inter_tree_conflicts)
+        # Implement this function: generate consensus for each conflict.
         # Params: intra_tree_conflicts: all intra tree conflicts. { 1: [ "argument": "...", "counterargument": "...", "comments": [ {comment_1}, {comment_2}, ... ] ] , 2: [ "argument": "...", "counterargument": "...", "comments": [ {comment_1}, {comment_2}, ... ] ] , ... }, inter_tree_conflicts: all inter tree conflicts. { 'dimensions': { 1: {'argument': '...', 'comments': [ {comment_1}, {comment_2}, ... ] } , 2: {'argument': '...', 'comments': [ {comment_1}, {comment_2}, ... ] } , ... }, 'comments': [ {comment_1}, {comment_2}, ... ] }
         # Return: a list of consensus for each conflict. { 'intra_tree': {1: consensus, 2: consensus, ...}, 'inter_tree': consensus }
         # The consensus is a list of comments that are related to the conflict.
 
+        # TODO: simplify the conflicts
         Prompt = f"""
         You are generating consensus for a conflict.
         The input is a list of conflicts and each conflict has a list of related comments:
@@ -905,17 +1133,38 @@ class CommentAnalyzer:
         }}
         """
 
-        response = client.chat.completions.create(
-            model=arg.OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that generates consensus for a conflict. Always respond with valid JSON format."},
-                {"role": "user", "content": Prompt}
-            ],
-            max_tokens=400,
-            temperature=0.1
-        )
+        result_text = ""
+        retry_count = -1
+        while len(result_text) < 10:
+            if retry_count != -1:
+                print(f"[GPT response too short, retrying...]")
+                print(f"[GPT response] = {result_text}")
+                print(f"[GPT prompt] = {Prompt}")
+            response = client.chat.completions.create(
+                model=arg.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that generates consensus for a conflict. Always respond with valid JSON format."},
+                    {"role": "user", "content": Prompt}
+                ],
+                temperature=0.1
+            )
 
-        result_text = response.choices[0].message.content.strip()
+            result_text = response.choices[0].message.content.strip()
+            retry_count += 1
+
+            if retry_count > 3:
+                model = "gpt-4o"
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[  
+                        {"role": "system", "content": "You are a helpful assistant that generates consensus for a conflict. Always respond with valid JSON format."},
+                        {"role": "user", "content": Prompt}
+                    ],
+                    temperature=0.1
+                )
+                result_text = response.choices[0].message.content.strip()
+                print(f"[GPT 4o response] = {result_text}")
+
         try:
             result_json = json.loads(extract_json_from_markdown(result_text))
         except Exception as e:
@@ -923,12 +1172,18 @@ class CommentAnalyzer:
             result_json = { "intra_tree": [], "inter_tree": "" }
         return_result = { "intra_tree": {}, "inter_tree": "" }
         for each_consensus in result_json['intra_tree']:
-            return_result['intra_tree'][each_consensus['conflict_order']] = each_consensus['consensus']
+            return_result['intra_tree'][str(each_consensus['conflict_order'])] = each_consensus['consensus']
         return_result['inter_tree'] = result_json['inter_tree']['consensus']
+        print(f"[consensus_generate]🐞: return_result = ")
+        pprint(return_result)
+        # should be:
+        # return_result = { "intra_tree": {'1': '...', '2': '...'}, 'inter_tree': '...' }
         return return_result
 
     def coverage_of_consensus(self, consensus, comments_in_phase_4):
-        # TODO: Implement this function: determine if the comments in phase 4 cover the consensus.
+        print(f"🟢: In function [coverage_of_consensus], comments_in_phase_4 = ")
+        pprint(comments_in_phase_4)
+        # Implement this function: determine if the comments in phase 4 cover the consensus.
         # Params: consensus:  list of consensus [consensus, 0:intra_tree/1:inter_tree]
         # Return: a list of coverage for each consensus. { 'intra_tree': {1: coverage, 2: coverage, ...}, 'inter_tree': {1: coverage, 2: coverage, ...}}
         # The coverage is a list of comments that are related to the consensus.
@@ -940,14 +1195,22 @@ class CommentAnalyzer:
             else:
                 inter_tree_consensus.append(each_consensus[0])
 
+        intra_tree_consensus_text = '\n'.join([f"Consensus {i+1}: {each_consensus['consensus']}" for i, each_consensus in enumerate(intra_tree_consensus)])
+        inter_tree_consensus_text = '\n'.join([f"Consensus {i+1}: {each_consensus['consensus']}" for i, each_consensus in enumerate(inter_tree_consensus)])
+
+        print(f"[coverage_of_consensus]🐞: intra_tree_consensus_text = ")
+        print(intra_tree_consensus_text)
+        print(f"[coverage_of_consensus]🐞: inter_tree_consensus_text = ")
+        print(inter_tree_consensus_text)
+
         Prompt = f"""
         You are determining if a selected list of comments cover the consensus.
         The consensus is a list of consensus with intra-tree conflicts and the inter-tree conflict.
         Consensus of intra-tree conflicts:
-        {intra_tree_consensus}
+        {intra_tree_consensus_text}
 
         Consensus of the inter-tree conflict:
-        {inter_tree_consensus}
+        {inter_tree_consensus_text}
 
         The comments are:
         {comments_in_phase_4}
@@ -955,6 +1218,8 @@ class CommentAnalyzer:
         You need to determine if the comments cover the consensus and give a reason for the scoring.
         The score is from 0 to 1 (0 = not covered, 1 = covered).
         The reason is a brief explanation for the scoring.
+
+        In your response, you must include evaluatio for EACH consensus.
 
         Respond with a JSON object in this exact format:
         {{
@@ -977,16 +1242,37 @@ class CommentAnalyzer:
             }}
         }}
         """
-        response = client.chat.completions.create(
-            model=arg.OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that determines if the comments cover the consensus. Always respond with valid JSON format."},
-                {"role": "user", "content": Prompt}
-            ],
-            max_tokens=400,
-            temperature=0.1
-        )
-        result_text = response.choices[0].message.content.strip()
+        result_text = ""
+        retry_count = -1
+        while len(result_text) < 10:
+            if retry_count != -1:
+                print(f"[GPT response too short, retrying...]")
+                print(f"[GPT response] = {result_text}")
+                print(f"[GPT prompt] = {Prompt}")
+            response = client.chat.completions.create(
+                model=arg.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that determines if the comments cover the consensus. Always respond with valid JSON format."},
+                    {"role": "user", "content": Prompt}
+                ],
+                temperature=0.1
+            )
+            result_text = response.choices[0].message.content.strip()
+            retry_count += 1
+
+            if retry_count > 3:
+                model = "gpt-4o"
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that determines if the comments cover the consensus. Always respond with valid JSON format."},
+                        {"role": "user", "content": Prompt}
+                    ],
+                    temperature=0.1
+                )
+                result_text = response.choices[0].message.content.strip()
+                print(f"[GPT 4o response] = {result_text}")
+
         try:
             result_json = json.loads(extract_json_from_markdown(result_text))
         except Exception as e:
@@ -994,39 +1280,44 @@ class CommentAnalyzer:
             result_json = { "intra_tree": [], "inter_tree": {} }
         return_result = { "intra_tree": {}, "inter_tree": {} }
         for each_evaluation in result_json['intra_tree']:
-            return_result['intra_tree'][each_evaluation['conflict_order']] = { 'score': each_evaluation['score'], 'reason': each_evaluation['reason']}
+            return_result['intra_tree'][str(each_evaluation['conflict_order'])] = { 'score': each_evaluation['score'], 'reason': each_evaluation['reason']}
         if 'inter_tree' in result_json and result_json['inter_tree']:
             return_result['inter_tree'] = { 'score': result_json['inter_tree']['score'], 'reason': result_json['inter_tree']['reason']}
         else:
             return_result['inter_tree'] = { 'score': 0, 'reason': 'No inter-tree consensus coverage data' }
+        print(f"[coverage_of_consensus]🐞: return_result = ")
+        pprint(return_result)
         return return_result
 
     def extract_reflection_comments(self, context):
-        # TODO: Implement this function: extract reflection comments from the context.
+        print(f"🟢: In function [extract_reflection_comments]")
+        # Implement this function: extract reflection comments from the context.
         # Params: context: the context of the discussion.
         # Return: a list of reflection comments.
         # Use ChatGPT to feed into all phase 4 comments and extract all comments that are reflection of the discussion process or future applications of the dicussion result.
         phase_4_comments = self.extract_phase_x_comments(context, 4)
+        print(f"[extract_reflection_comments]🐞: phase_4_comments = ")
+        pprint(phase_4_comments)
         prompt = f"""
         You are extracting reflection comments from a discussion. This includes: 
         - Reflection statements of the discussion process
         - Discussion of future applications of the ideas and consensus of the discussion
 
-        You will be given a list of comments. For each comment, you need to determine if it is a reflection comment.
+        You will be given a list of comments. For each comment, you need to determine if it is a reflection comment (0 = not reflection, 1 = reflection).
 
         The comments are:
-        {context['comments']}
+        {phase_4_comments}
 
         Respond with a JSON object in this exact format:
         [
             {{
                 "comment_id": 1 | 2 | ..., # the id of the comment
-                "comment_body": "...", # the body of the comment
+                "reflection_score": 0 | 1, # the score of the reflection comment
                 "reason": "...", # the reason why this is a reflection comment
             }},
             {{
                 "comment_id": 1 | 2 | ..., # the id of the comment
-                "comment_body": "...", # the body of the comment
+                "reflection_score": 0 | 1, # the score of the reflection comment
                 "reason": "...", # the reason why this is a reflection comment
             }},
             ...
@@ -1038,7 +1329,6 @@ class CommentAnalyzer:
                 {"role": "system", "content": "You are a helpful assistant that extracts reflection comments from a discussion."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=400,
             temperature=0.1
         )
         result_text = response.choices[0].message.content.strip()
@@ -1047,10 +1337,22 @@ class CommentAnalyzer:
         except Exception as e:
             print(f"Error parsing GPT response for reflection comments: {e}")
             result_json = []
-        return result_json
+        print(f"[extract_reflection_comments]🐞: result_json = ")
+        pprint(result_json)
+
+        # filter: only keep those with reflection_score = 1
+        result_json_reflection = [each_comment for each_comment in result_json if each_comment['reflection_score'] == 1]
+        print(f"[extract_reflection_comments]🐞: result_json_reflection = ")
+        pprint(result_json_reflection)
+        return result_json_reflection
 
     def add_to_graph(self, context, new_comments):
         print(f"🟢: In function [add_to_graph], new_comments (len={len(new_comments)}) = {new_comments}")
+
+        # copy new_comments
+        new_comments = copy.deepcopy(new_comments)
+        # filter those comments that are < current phase
+        new_comments = [each_comment for each_comment in new_comments if each_comment['message_phase'] >= context['phase']]
 
         graph = context['graph']
         nodes = graph.get('nodes', [])
@@ -1072,6 +1374,8 @@ class CommentAnalyzer:
         # Build a lookup for all comments (old and new) by id
         all_comments = {c['id']: c for c in (context.get('comments', []) + new_comments)}
         for comment in new_comments:
+            if comment["author_isbot"] == "true":
+                continue
             cid = comment['id']
             phase = comment.get('message_phase', 0)
             if phase in [0, 3, 4]:
@@ -1131,7 +1435,7 @@ class CommentAnalyzer:
                         print(f"[add_to_graph]🐞: Found {len(candidate_comments)} recent comments by mentioned user @{mentioned_user}")
                         print(f"[add_to_graph]🐞: candidate_comments = {candidate_comments}")
                     else:
-                        # Get most recent 5 comments
+                        # Get most recent 10 comments
                         recent_comments = []
                         for past_node in nodes:
                             past_id = past_node['id']
@@ -1139,12 +1443,14 @@ class CommentAnalyzer:
                                 continue
                             if past_node.get('phase', 0) not in [1, 2]:
                                 continue
+                            if past_node.get('author_isbot', 'false') == 'true':
+                                continue
                             past_comment = all_comments.get(past_id, past_node)
                             recent_comments.append(past_comment)
                         
-                        # Sort by ID (assuming higher ID = more recent) and get top 5
+                        # Sort by ID (assuming higher ID = more recent) and get top 10
                         recent_comments.sort(key=lambda x: x.get('id', 0), reverse=True)
-                        candidate_comments = recent_comments[:5]
+                        candidate_comments = recent_comments[:10]
                         print(f"[add_to_graph]🐞: Analyzing against {len(candidate_comments)} most recent comments")
                         print(f"[add_to_graph]🐞: candidate_comments = {candidate_comments}")
                     
@@ -1192,24 +1498,31 @@ class CommentAnalyzer:
         print(f"[add_to_graph]🐞: before exit, graph['edges'] = {graph['edges']}")
         return graph
 
-    def check_discussion_sufficiency(self, context, new_comments):
+    def check_discussion_sufficiency(self, context, new_comments, force_sufficient=False):
+        
+        if force_sufficient:
+            # necessary setup
+            return {'phase': context['phase'] + 1, 'patience': arg.MAX_PATIENCE}
+
         print(f"🟢: In function [check_discussion_sufficiency]")
         """检查当前阶段讨论是否充分"""
         current_phase = context['phase']
         # current_is_sufficient = context['is_sufficient']
-        current_discussion_patience = context['discussion_patience']
+        # current_discussion_patience = context['discussion_patience']
         new_discussion_phase = current_phase
-        new_discussion_patience = current_discussion_patience
+        new_discussion_patience = context['discussion_patience']
         # new_is_sufficient = current_is_sufficient
         while current_phase != 6:
             if current_phase == 0:
                 if len(new_comments) > 0:
-                    print(f"******************** Enter PHASE 1 ********************")
+                    print(f"**************************************** Enter PHASE 1 ****************************************")
                     new_discussion_phase = 1
                     new_discussion_patience = arg.MAX_PATIENCE
+                    print(f"[check_discussion_sufficiency]⏰: Enter PHASE 1, Discussion Patience: set back to {arg.MAX_PATIENCE}")
                 else:
                     new_discussion_phase = 0
-                    new_discussion_patience = current_discussion_patience - len(new_comments)
+                    new_discussion_patience = new_discussion_patience - len(new_comments)
+                    print(f"[check_discussion_sufficiency]⏰: Stay in PHASE 0, Discussion Patience -= {len(new_comments)}, Discussion Patience = {new_discussion_patience}")
                     break
             elif current_phase == 1:
                 #判断阶段一的评论是不是足够多
@@ -1222,12 +1535,14 @@ class CommentAnalyzer:
                         phase_1_comments += 1
                 print(f"[check_discussion_sufficiency]🐞: phase_1_comments = {phase_1_comments}")
                 if phase_1_comments >= self.phase_criteria['initiation']['min_comments']:
-                    print(f"******************** Enter PHASE 2 ********************")
+                    print(f"**************************************** Enter PHASE 2 ****************************************")
                     new_discussion_phase = 2
                     new_discussion_patience = arg.MAX_PATIENCE
+                    print(f"[check_discussion_sufficiency]⏰: Enter PHASE 2, Discussion Patience: set back to {arg.MAX_PATIENCE}")
                 else:
                     new_discussion_phase = 1
-                    new_discussion_patience = current_discussion_patience - len(new_comments)
+                    new_discussion_patience = new_discussion_patience - len(new_comments)
+                    print(f"[check_discussion_sufficiency]⏰: Stay in PHASE 1, Discussion Patience -= {len(new_comments)}, Discussion Patience = {new_discussion_patience}")
                     break
             elif current_phase == 2:
                 #判断阶段二每个tree是否都有讨论的各个部分
@@ -1238,6 +1553,7 @@ class CommentAnalyzer:
                         context['graph']['arguments'] = {}
                     if 'tree_scores' not in context['graph']:
                         context['graph']['tree_scores'] = {}
+
                     all_trees_full = True
                     for tid in tree_ids:
                         # INT2STR
@@ -1289,15 +1605,17 @@ class CommentAnalyzer:
                         #     )
                         # ):
                         #     all_trees_full = False
-                        # sufficiency check: Two of the three dimensions of an argument are present # TODO: this is loose
+                        # sufficiency check: Two of the three dimensions of an argument are present; 2 of the 3 dimensions of counterargument are present (if counterargument is present)
                         if not (
-                            # argument + counterargument is present
-                            # ( # only argument is present, in this case we need 2 of the 3 dimensions to be present
+                            ( # only argument is present, in this case we need 2 of the 3 dimensions to be present
                                 score.get('evidence', {}).get('score', 0) + score.get('reasoning', {}).get('score', 0) + score.get('qualifier', {}).get('score', 0) >= 2
-                            # ) or (
-                            #     # argument + counterargument is present, in this case we need 
-                            #     score.get('argument', {}).get('score', 0) == 1 and
-                            # )
+                            ) and (
+                                (
+                                    score.get('counterargument', {}).get('score', 0) == 0
+                                ) or (
+                                    score.get('counterargument_evidence', {}).get('score', 0) + score.get('counterargument_reasoning', {}).get('score', 0) + score.get('counterargument_qualifier', {}).get('score', 0) >= 2
+                                )
+                            )
                         ):
                             all_trees_full = False
                             print(f"[check_discussion_sufficiency]🐞: Tree {tid} is not full")
@@ -1308,12 +1626,14 @@ class CommentAnalyzer:
                         print(f"[check_discussion_sufficiency]🐞: Tree {tid}\tTree scores: ")
                         pprint(context['graph']['tree_scores'][tid])
                     if all_trees_full:
-                        print(f"******************** Enter PHASE 3 ********************")
+                        print(f"**************************************** Enter PHASE 3 ****************************************")
                         new_discussion_phase = 3
                         new_discussion_patience = arg.MAX_PATIENCE
+                        print(f"[check_discussion_sufficiency]⏰: Enter PHASE 3, Discussion Patience: set back to {arg.MAX_PATIENCE}")
                     else:
                         new_discussion_phase = 2
-                        new_discussion_patience = current_discussion_patience - len(new_comments)
+                        new_discussion_patience = new_discussion_patience - len(new_comments)
+                        print(f"[check_discussion_sufficiency]⏰: Stay in PHASE 2, Discussion Patience -= {len(new_comments)}, Discussion Patience = {new_discussion_patience}")
                         break
                 except Exception as e:
                     print("Error during sufficiency check of phase 2:", e)
@@ -1360,7 +1680,7 @@ class CommentAnalyzer:
                         context['graph']['conflicts']['inter_tree']['consensus_rating'] = inter_conflicts_consensus_rating
                     
                     print(f"[check_discussion_sufficiency]🐞: will check if PHASE 3 is sufficient ...")
-                    pprint(context['graph']['conflicts'])
+                    pprint(context['graph']['conflicts'], width=200)
                     # Advance phase only if all intra and inter-tree conflicts have consensus score >= 1 and all inter-tree conflict dimensions have score == 1
                     all_ok = True
                     for tid in list_tree_ids(context):
@@ -1374,17 +1694,19 @@ class CommentAnalyzer:
                     if context['graph']['conflicts']['inter_tree'].get('consensus_rating', {}).get('score', 0) < 1: # inter-tree must reach consensus
                         all_ok = False
                     if all_ok:
-                        print(f"******************** Enter PHASE 4 ********************")
+                        print(f"**************************************** Enter PHASE 4 ****************************************")
                         new_discussion_phase = 4
                         new_discussion_patience = arg.MAX_PATIENCE
-                        # TODO: 进入阶段四，准备consensus
+                        print(f"[check_discussion_sufficiency]⏰: Enter PHASE 4, Discussion Patience: set back to {arg.MAX_PATIENCE}")
+                        # 进入阶段四，准备consensus
                         consensus_list = self.consensus_generate(context['graph']['conflicts']['intra_tree'], context['graph']['conflicts']['inter_tree']['dimensions'])
                         for tid, consensus in consensus_list['intra_tree'].items():
                             context['graph']['conflicts']['intra_tree'][tid]['consensus'] = consensus
                         context['graph']['conflicts']['inter_tree']['consensus'] = consensus_list['inter_tree']
                     else:
                         new_discussion_phase = 3
-                        new_discussion_patience = current_discussion_patience - len(new_comments)
+                        new_discussion_patience = new_discussion_patience - len(new_comments)
+                        print(f"[check_discussion_sufficiency]⏰: Stay in PHASE 3, Discussion Patience -= {len(new_comments)}, Discussion Patience = {new_discussion_patience}")
                         break
                 except Exception as e:
                     print('Error during sufficiency check of phase 3:', traceback.format_exc())
@@ -1393,38 +1715,44 @@ class CommentAnalyzer:
                 consensus_list = []
                 for tid, consensus_data in context['graph']['conflicts']['intra_tree'].items():
                     consensus_list.append([consensus_data, 0])
-                for tid, consensus_data in context['graph']['conflicts']['inter_tree']['dimensions'].items():
-                    consensus_list.append([consensus_data, 1])
+                consensus_list.append([context['graph']['conflicts']['inter_tree'], 1])
 
                 comments_in_phase_4 = self.extract_phase_x_comments(context, 4)
                 coverage_of_consensus = self.coverage_of_consensus(consensus_list, comments_in_phase_4)
-                # coverage_of_consensus: { 'intra_tree': {1:{ 'score': 0 | 1, 'reason': '...' }, 2:{ 'score': 0 | 1, 'reason': '...' }, ...}, 'inter_tree': {1:{ 'score': 0 | 1, 'reason': '...' }, 2:{ 'score': 0 | 1, 'reason': '...' }, ...}}
+                # coverage_of_consensus: { 'intra_tree': {1:{ 'score': 0 | 1, 'reason': '...' }, 2:{ 'score': 0 | 1, 'reason': '...' }, ...}, 'inter_tree': { 'score': 0 | 1, 'reason': '...' }}
+                context['graph']['coverage_of_consensus'] = coverage_of_consensus # save for later use
                 # 如果所有的consensus都覆盖了，则进入phase 5
                 all_covered = True
                 for tid, coverage in coverage_of_consensus['intra_tree'].items():
-                    if coverage['score'] < 1:
+                    if coverage['score'] < 1 and context['graph']['conflicts']['intra_tree'][tid]['counterargument'] != "":
                         all_covered = False
                         break
                 if coverage_of_consensus['inter_tree']['score'] < 1:
                     all_covered = False
                     break
                 if all_covered:
+                    print(f"**************************************** Enter PHASE 5 ****************************************")
                     new_discussion_phase = 5
                     new_discussion_patience = arg.MAX_PATIENCE
+                    print(f"[check_discussion_sufficiency]⏰: Enter PHASE 5, Discussion Patience: set back to {arg.MAX_PATIENCE}")
                 else:
                     new_discussion_phase = 4
-                    new_discussion_patience = current_discussion_patience - len(new_comments)
+                    new_discussion_patience = new_discussion_patience - len(new_comments)
+                    print(f"[check_discussion_sufficiency]⏰: Stay in PHASE 4, Discussion Patience -= {len(new_comments)}, Discussion Patience = {new_discussion_patience}")
                     break
             elif current_phase == 5:
                 reflection_comments = self.extract_reflection_comments(context)
                 print(f"[check_discussion_sufficiency]🐞: reflection_comments = {reflection_comments}")
                 context['reflection_comments'] = reflection_comments
                 if len(reflection_comments) > self.phase_criteria['co_construction_subphase_2']['min_comments']:
+                    print(f"**************************************** Finish PHASE 5 ****************************************")
                     new_discussion_phase = 6
                     new_discussion_patience = arg.MAX_PATIENCE
+                    print(f"[check_discussion_sufficiency]⏰: Enter PHASE 5, Discussion Patience: set back to {arg.MAX_PATIENCE}")
                 else:
                     new_discussion_phase = 5
-                    new_discussion_patience = current_discussion_patience - len(new_comments)
+                    new_discussion_patience = new_discussion_patience - len(new_comments)
+                    print(f"[check_discussion_sufficiency]⏰: Stay in PHASE 5, Discussion Patience -= {len(new_comments)}, Discussion Patience = {new_discussion_patience}")
                     break
             current_phase = new_discussion_phase
         return {'phase': new_discussion_phase, 'patience': new_discussion_patience}

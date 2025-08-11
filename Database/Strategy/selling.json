@@ -1,10 +1,10 @@
 {
-    "initiation": "{existing_aspects}. Now, please consider {new_angle} and share your thoughts, because {benefits}",
+    "initiation": "{existing_aspects}. Now, please consider {new_claim} and share your thoughts, because {benefits}",
     "exploration": "For the argument \"{target_argument}\", can anyone provide more {missing_support} for it? {benefits}",
     "negotiation": [
         "I noticed that there still exist some conflicts unresolved, for example, {conflicts}. Please share your thoughts on this conflict, {benefits}",
         "I noticed that we still have not reached a consensus on {conflicts}, but the disagreement is clear. For each side, please summarize and state your stance on this conflict, because this is helpful for all members to understand each other's stance and at least reach a clarified disagreement."
     ],
-    "co_construction": "我们的讨论非常有价值！我们构建的understanding可以应用到{application_areas}。让我说明这些应用的具体价值：{specific_values}。",
-    "co_construction_subphase_2": "TODO"
+    "co_construction": "We have reached a consensus on previous issues through discussions. Now, please summarize the consensus on {target_aspect}, {benefits}",
+    "co_construction_subphase_2": "We have summarized the consensus we have reached. Now, please reflect on the whole discussion process on {target_aspect}, and think about its possible applications, {benefits}"
 } 

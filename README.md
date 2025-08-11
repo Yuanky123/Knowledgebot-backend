@@ -284,29 +284,29 @@ Content-Type: application/json
 
 - [ ] 重复评论会当做两个不同的argument
 
-- [ ] 所有有random的地方都输出一个log
+- [x] 所有有random的地方都输出一个log
 
-- [ ] 并发测试：60人同时post comments
+- [x] 并发测试：60人同时post comments
 
 - [ ] 读写context，（加锁？）modify需要一个文件副本？interface?
 
 - [ ] comment phase analyzer: 如果之前已经有了Phase，则不重新分析
   但感觉没有那么必要
 
-- [ ] phase 3 consensus 分类
+- [x] phase 3 consensus 分类
   + 三种consensus的定义
 
-- [ ] phase 3 第二阶段的response generator
+- [x] phase 3 第二阶段的response generator
 
 - [x] phase 4 - 1 consensus type 加进Template
 
-- [ ] phase 4 - 2 for above mentioned consensus, please反思应用
+- [x] phase 4 - 2 for above mentioned consensus, please反思应用
 
-- [ ] phase 4 - 2 饱和判断条件（threshold条comment属于反思或应用）
+- [x] phase 4 - 2 饱和判断条件（threshold条comment属于反思或应用）
 
 - [ ] 运行bot 几个人测试一下
 
-- [ ] id_to_comment 变量 容易没考虑到new_added_comments
+- [o] id_to_comment 变量 容易没考虑到new_added_comments
 
 
 - [x] 提取counterargument有false positive: 
@@ -325,7 +325,7 @@ Content-Type: application/json
     - [ ] analyze_connection_batch中也可以加：(respond A: we can also consider B2 => group with B1?)
 
 
-- [ ] bot干预策略，random选择target的时候，尽量不要反复持续干预同一个点
+- [o] bot干预策略，random选择target的时候，尽量不要反复持续干预同一个点
 
 - [ ] argument score evaluation: 先输出原因再输出分数；给出三个dimension的定义？因为现在很明显的评论都分不出来 eg. The phrase 'I think' indicates a personal opinion, which serves as a qualifier for the strength of the main argument.', - 但还行
 
@@ -338,4 +338,91 @@ Content-Type: application/json
 
 - [x] In reply to:加换行 (build_chain)
 
-- [ ] 确定phase 2 sufficient criteria (现在用的比较宽松)
+- [x] 确定phase 2 sufficient criteria (现在用的比较宽松)
+
+- [ ] 所有输入comment list的地方按照id排序
+
+
+
+- [x] 三者随机: qualifier evidence reasoning
+
+
+- [x] LLM 重写generated message
+
+
+
+
+
+
+
+- [o] delegating 不需要LLM重写
+- [o] delegating 只在每个阶段开始时发一条消息
+
+
+- [o] participating 不能是问句; 但最后是号召大家参与
+
+- [o] Initiation措辞：new angle -> new claim distinct from existing claims
+
+- [o] Participating style prompt: 
+  - [o] {"role": "system", "content": "You are a user in an online knowledge community."},
+  - [o] no "user-like"
+  - [o] participating的结尾鼓励user参与/补充 Who can ....?
+
+- [o] 删掉“you”之类的用词,不用给人员的代指；anyone可以
+    solution: 在最后的改写prompt中
+
+- [o] 确保bot的评论在任何情况下都不计入graph； 
+
+- [o] phase 2 counter argument supporting factor也要3选2
+
+
+- [x] fine-tune llm : reply 1: >= 2
+
+- [o] coverage_of_consensus: 不考虑intra-tree with no counterargument
+
+- [x] increase temperature for LLM
+
+concurrency
+- [x] LLM concurrent api cal
+    solution: use python 3.10+; 3.9 will raise error
+- [ ] -> backend
+- [ ] -> frontend
+
+- [ ] 莫名其妙出现的4个tree（yuanhao test的四个case之一）
+
+
+- [o] 所有log 加timestamp
+
+- [ ] evidence  reasoning qualifier: few-shot examples
+
+
+- [x] get phase x comments 的时候会不会把bot也考虑进去？
+    会 已经修改成忽略所有bot comments
+
+- [x] update_context_to_database()
+
+- [x] analyze_connection_batch: 5 more
+
+
+
+- [ ] gemini 2.5 flash
+
+
+
+
+rm Database/0.json; python -u app.py > pilot.log
+
+
+- [x] check human input: y/n; ignore [B^[[A^[[A^[[A^[[A^[[A^[[A^[[A^[[A^[[A^
+
+- [ ] print bot info in bash; 
+- [ ] print log to file
+之后再说
+
+- [ ] multi bot file read/write, args, using different files
+    直接复制多份folders
+
+- [ ] 所有prompt都加上post information
+
+
+- [ ] 

@@ -1,10 +1,10 @@
 {
-    "initiation": "I believe everyone has a lot of ideas to share. Please feel free to start the discussion.",
-    "exploration": "Could you elaborate on these viewpoints to make them more comprehensive, and try to connect different perspectives?",
+    "initiation": "Please feel free to share your own perspectives.",
+    "exploration": "If you have some thoughts on the previous comments, feel free to expand on them.",
     "negotiation": [
-        "There are now some differences, divergences, and details that need to be addressed. Please negotiate to resolve these parts.",
-        "I noticed that we still have not reached a consensus even through a lot of discussions. For each side, please summarize and state your stance on this conflict."
+        "There are some inconsistencies and details that need to be addressed. Please resolve thom.",
+        "IGNORE"
     ],
-    "co_construction": "Your discussion has been wonderful, and many valuable insights have emerged. Could you please summarize the current consensus comprehensively and think about whether it can be applied to other fields?",
-    "co_construction_subphase_2": "TODO"
+    "co_construction": "Please summarize the current consensus comprehensively.",
+    "co_construction_subphase_2": "Please reflect on the co-constructed knowledge and its application to other fields."
 } 

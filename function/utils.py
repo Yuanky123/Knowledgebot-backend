@@ -38,7 +38,7 @@ def formulate_tree(context, tree_id):
     tree_comments = []
     for n in tree_nodes:
         c = id_to_comment.get(n['id'])
-        if c:
+        if c and c['message_phase'] != 0:
             parent_chain = build_parent_chain(c, id_to_comment)
             tree_comments.append(f"Author: {c.get('author_name', 'Unknown')}: {parent_chain} {c.get('body', 'No content')}")
     context_text = "\n".join(tree_comments)
