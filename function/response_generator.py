@@ -914,6 +914,8 @@ class ResponseGenerator:
                 raise ValueError(f"Invalid intervention style: {intervention_style}")
 
         if intervention_style in [0, 1, 2]:
+
+            words_limit = [15, 35, 40] 
             # rewrite the intervention message in a more natural tone
             print(f"[generate_custom_response]🐞: will rewrite the intervention message. Original intervention_message = {intervention_message}")
 
@@ -929,6 +931,7 @@ class ResponseGenerator:
 
             Note:
             - Your comment should target at all users in the discussion, not a specific user. Thus, DO NOT user expressions like "you". Instead, if the original intervention message includes "you", you should rewrite it to more general expressions like "anyone".
+            - Word count limit: You should limit your comment to around {words_limit[intervention_style]} words.
 
             Respond with a JSON object containing:
             - "body": string, the rewritten message.
